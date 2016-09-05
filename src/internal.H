@@ -38,6 +38,7 @@
     #error "system.H" must be included prior to "internal.H"
 #endif
 
+#include "../inc/mcpp.h"
 #include "mcpp_out.h"
 
 #if MCPP_LIB
@@ -222,6 +223,15 @@ typedef struct defbuf {
         char            name[1];    /* Macro name                   */
 } DEFBUF;
 
+// Anima ADD
+typedef struct mfile {
+	FILE* fp;
+	char* start;
+	char* end;
+	char* cur;
+} MFILE;
+// Anima ADD
+
 /*
  * The FILEINFO structure stores information about open files and macros
  * being expanded.
@@ -229,7 +239,8 @@ typedef struct defbuf {
 typedef struct fileinfo {
         char *          bptr;       /* Current pointer into buffer  */
         long            line;       /* Current line number of file  */
-        FILE *          fp;         /* Source file if non-null      */
+        //FILE *          fp;         /* Source file if non-null      */	// Anima ADD
+		MFILE *			mf;			/* Source mfile if non-null		*/ 		// Anima ADD
         long            pos;        /* Position next to #include    */
         struct fileinfo *   parent; /* Link to includer             */
         struct ifinfo *     initif; /* Initial ifstack (return there on EOF)*/
@@ -370,7 +381,7 @@ extern char *   macro_name;         /* Currently expanding macro    */
 extern int      openum;             /* Number of operator or punct. */
 extern IFINFO *     ifptr;          /* -> current ifstack item      */
 extern FILEINFO *   infile;         /* Current input file or macro  */
-extern FILE *   fp_in;              /* Input stream to preprocess   */
+//extern FILE *   fp_in;              /* Input stream to preprocess   */		// Anima ADD
 extern FILE *   fp_out;             /* Output stream preprocessed   */
 extern FILE *   fp_err;             /* Diagnostics stream           */
 extern FILE *   fp_debug;           /* Debugging information stream */
@@ -503,6 +514,18 @@ extern int      (* mcpp_fputc)( int c, OUTDEST od),
                 (* mcpp_fputs)( const char * s, OUTDEST od),
                 (* mcpp_fprintf)( OUTDEST od, const char * format, ...);
 
+// Anima ADD
+/* mfile support, implemented in system.c */
+extern MFILE* mfopen(const char* filename);
+extern void mfclose(MFILE* mf);
+extern void mfseek(MFILE* mf, int pos);
+extern char* mfgets(char* str, int size, MFILE* mf);
+extern int mferror(MFILE* mf);
+extern int mftell(MFILE* mf);
+extern void mfset(file_loader in_file_loader);
+extern int mfexists(const char* filename);
+// Anima ADD
+
 /* system.c */
 extern void     do_options( int argc, char ** argv, char ** in_pp
         , char ** out_pp);
@@ -515,7 +538,7 @@ extern void     put_depend( const char * filename);
                 /* Output source dependency line*/
 extern int      do_include( int next);
                 /* Process #include directive   */
-extern void     add_file( FILE * fp, const char * src_dir
+extern void     add_file( MFILE * mf, const char * src_dir							// Anima ADD
         , const char * filename, const char * fullname, int include_opt);
                 /* Chain the included file      */
 extern void     sharp( FILEINFO * sharp_file, int marker);

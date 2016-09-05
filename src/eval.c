@@ -532,7 +532,7 @@ static int  eval_lex( void)
                     return  VAL;            /* Parsed ok            */
             }
             cerror( "Bad defined syntax: %s"                /* _E_  */
-                    , infile->fp ? "" : infile->buffer, 0L, NULL);
+                    , infile->mf ? "" : infile->buffer, 0L, NULL); // Anima ADD
             break;
         } else if (cplus_val) {
             if (str_eq( identifier, "true")) {

@@ -1342,7 +1342,7 @@ DEFBUF **   look_prev(
     DEFBUF **   prevp;
     DEFBUF *    dp;
     size_t      s_name;
-    int         hash;
+    size_t      hash;
 
     for (hash = 0, np = name; *np != EOS; )
         hash += *np++;
@@ -1352,7 +1352,9 @@ DEFBUF **   look_prev(
     *cmp = -1;                              /* Initialize           */
 
     while ((dp = *prevp) != NULL) {
-        if ((*cmp = memcmp( dp->name, name, s_name)) >= 0)
+// Anima ADD
+        if ((*cmp = strncmp( dp->name, name, s_name)) >= 0)
+// Anima ADD
             break;
         prevp = &dp->link;
     }

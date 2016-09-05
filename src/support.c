@@ -188,7 +188,7 @@ static char *   append_to_buffer(
     size_t      length
 )
 {
-    if (mem_buf_p->bytes_avail < length) {  /* Need to allocate more memory */
+    if (mem_buf_p->bytes_avail <= length) {  /* Need to allocate more memory */	// Anima ADD
         size_t size = MAX( BUF_INCR_SIZE, length);
 
         if (mem_buf_p->buffer == NULL) {            /* 1st append   */
@@ -378,17 +378,17 @@ int     get_unexpandable(
 {
     DEFBUF *    defp = NULL;
     FILEINFO *  file;
-    FILE *  fp = NULL;
+    MFILE *  mf = NULL;					// Anima ADD
     LINE_COL    line_col = { 0L, 0};
     int     token_type = NO_TOKEN;
     int     has_pragma;
 
     while (c != EOS && c != '\n'                /* In a line        */
-            && (fp = infile->fp         /* Preserve current state   */
+            && (mf = infile->mf         /* Preserve current state   */				// Anima ADD
                 , (token_type
                     = scan_token( c, (workp = work_buf, &workp), work_end))
                     == NAM)                     /* Identifier       */
-            && fp != NULL                       /* In source !      */
+            && mf != NULL                       /* In source !      */				// Anima ADD
             && (defp = is_macro( NULL)) != NULL) {      /* Macro    */
         expand_macro( defp, work_buf, work_end, line_col, & has_pragma);
                                                 /* Expand macro     */
@@ -411,7 +411,7 @@ int     get_unexpandable(
         return  NO_TOKEN;
     }
 
-    if (diag && fp == NULL && defp && (warn_level & 1)) {
+    if (diag && mf == NULL && defp && (warn_level & 1)) {							// Anima ADD
         char    tmp[ NWORK + 16];
         char *  tmp_end = tmp + NWORK;
         char *  tmp_p;
@@ -454,7 +454,7 @@ void    skip_nl( void)
  */
 {
     insert_sep = NO_SEP;
-    while (infile && infile->fp == NULL) {  /* Stacked text         */
+    while (infile && infile->mf == NULL) {  /* Stacked text         */				// Anima ADD
         infile->bptr += strlen( infile->bptr);
         get_ch();                           /* To the parent        */
     }
@@ -592,7 +592,7 @@ operat: out = scan_op( c, out);         /* Operator or punctuator   */
                 , *out_pp, 0L, NULL);
     if (mcpp_debug & TOKEN)
         dump_token( token_type, *out_pp);
-    if (mcpp_mode == POST_STD && token_type != SEP && infile->fp != NULL
+    if (mcpp_mode == POST_STD && token_type != SEP && infile->mf != NULL			// Anima ADD
             && (char_type[ *infile->bptr & UCHARMAX] & SPA) == 0)
         insert_sep = INSERT_SEP;    /* Insert token separator       */
     *out_pp = out;
@@ -662,7 +662,7 @@ static void scan_id(
         if (mcpp_mode == STD && (char_type[ c] & mbchk) && stdc3) {
             len = mb_read( c, &infile->bptr, &bp);
             if (len & MB_ERROR) {
-                if (infile->fp)
+                if (infile->mf)													// Anima ADD
                     cerror(
                     "Illegal multi-byte character sequence."    /* _E_  */
                             , NULL, 0L, NULL);
@@ -702,7 +702,7 @@ next_c:
     if (mcpp_mode == STD)
         len -= mb;
 #endif
-    if (standard && infile->fp && len > std_limits.id_len && (warn_level & 4))
+    if (standard && infile->mf && len > std_limits.id_len && (warn_level & 4))		// Anima ADD
         cwarn( "Identifier longer than %.0s%ld characters \"%s\""   /* _W4_ */
                 , NULL, (long) std_limits.id_len, identifier);
 #endif  /* IDMAX > IDLEN90MIN   */
@@ -755,7 +755,7 @@ scan:
             char *  bptr = infile->bptr;
             len = mb_read( c, &infile->bptr, (*out_p++ = c, &out_p));
             if (len & MB_ERROR) {
-                if (infile->fp != NULL && compiling && diag) {
+                if (infile->mf != NULL && compiling && diag) {				// Anima ADD
                     if (warn_level & 1) {
                         char *  buf;
                         size_t  chlen;
@@ -814,7 +814,7 @@ escape:
                 c = get_ch();
             }
         } else if (mcpp_mode == POST_STD && c == ' ' && delim == '>'
-                && infile->fp == NULL) {
+                && infile->mf == NULL) {											// Anima ADD
             continue;   /* Skip space possibly inserted by macro expansion  */
         } else if (c == '\n') {
             break;
@@ -838,7 +838,7 @@ chk_limit:
         *out_p++ = delim;
     *out_p = EOS;
     if (diag) {                         /* At translation phase 3   */
-        skip = (infile->fp == NULL) ? NULL : skip_line;
+        skip = (infile->mf == NULL) ? NULL : skip_line;								// Anima ADD
         if (c != delim) {
             if (mcpp_mode == OLD_PREP   /* Implicit closing of quote*/
                     && (delim == '"' || delim == '\''))
@@ -988,7 +988,7 @@ static char *   scan_number(
         } else if (mcpp_mode == STD && (char_type[ c] & mbchk) && stdc3) {
             len = mb_read( c, &infile->bptr, &out_p);
             if (len & MB_ERROR) {
-                if (infile->fp)
+                if (infile->mf)													// Anima ADD
                     cerror(
                     "Illegal multi-byte character sequence."    /* _E_  */
                             , NULL, 0L, NULL);
@@ -1156,7 +1156,7 @@ static char *   scan_ucn(
     for (i = 0; i < cnt; i++) {
         c = get_ch();
         if (! isxdigit( c)) {
-            if (infile->fp)
+            if (infile->mf)													// Anima ADD
                 cerror( "Illegal UCN sequence"              /* _E_  */
                         , NULL, 0L, NULL);
                 *out = EOS;
@@ -1168,7 +1168,7 @@ static char *   scan_ucn(
         c = (isdigit( c) ? (c - '0') : (c - 'a' + 10));
         value = (value << 4) | c;
     }
-    if (infile->fp                              /* In source        */
+    if (infile->mf                              /* In source        */		// Anima ADD
             && ((value >= 0L && value <= 0x9FL
                 && value != 0x24L && value != 0x40L && value != 0x60L)
                                     /* Basic source character       */
@@ -1519,7 +1519,7 @@ int     get_ch( void)
     if ((file = infile) == NULL)
         return  CHAR_EOF;                   /* End of all input     */
 
-    if (mcpp_mode == POST_STD && file->fp) {        /* In a source file     */
+    if (mcpp_mode == POST_STD && file->mf) {        /* In a source file     */		// Anima ADD
         switch (insert_sep) {
         case NO_SEP:
             break;
@@ -1539,7 +1539,7 @@ int     get_ch( void)
 
     if (mcpp_debug & GETC) {
         mcpp_fprintf( DBG, "get_ch(%s) '%c' line %ld, bptr = %d, buffer"
-            , file->fp ? cur_fullname : file->real_fname ? file->real_fname
+            , file->mf ? cur_fullname : file->real_fname ? file->real_fname			// Anima ADD
             : file->filename ? file->filename : "NULL"
             , *file->bptr & UCHARMAX
             , src_line, (int) (file->bptr - file->buffer));
@@ -1576,7 +1576,7 @@ int     get_ch( void)
      * file), or do end of file/macro processing, and reenter get_ch() to
      * restart from the top.
      */
-    if (file->fp &&                         /* In source file       */
+    if (file->mf &&                         /* In source file       */		// Anima ADD
             parse_line() != NULL)           /* Get line from file   */
         return  get_ch();
     /*
@@ -1591,16 +1591,19 @@ int     get_ch( void)
         free( file);    /* full_fname is the same with filename for main file*/
         return  CHAR_EOF;                   /* Return end of file   */
     }
-    if (file->fp) {                         /* Source file included */
+    if (file->mf) {                         /* Source file included */		// Anima ADD
         free( file->filename);              /* Free filename        */
         free( file->src_dir);               /* Free src_dir         */
-        fclose( file->fp);                  /* Close finished file  */
+        //fclose( file->fp);                  /* Close finished file  */	// Anima ADD
+		mfclose(file->mf);
         /* Do not free file->real_fname and file->full_fname        */
         cur_fullname = infile->full_fname;
         cur_fname = infile->real_fname;     /* Restore current fname*/
         if (infile->pos != 0L) {            /* Includer was closed  */
-            infile->fp = fopen( cur_fullname, "r");
-            fseek( infile->fp, infile->pos, SEEK_SET);
+            //infile->fp = fopen( cur_fullname, "r");						// Anima ADD
+            //fseek( infile->fp, infile->pos, SEEK_SET);					// Anima ADD
+			infile->mf = mfopen(cur_fullname);								// Anima ADD
+			mfseek(infile->mf, infile->pos);								// Anima ADD
         }   /* Re-open the includer and restore the file-position   */
         len = (int) (infile->bptr - infile->buffer);
         infile->buffer = xrealloc( infile->buffer, NBUFF);
@@ -1726,6 +1729,13 @@ com_start:
                 goto  end_line;
             default:                        /* Not a comment        */
 not_comment:
+// Anima ADD
+				if (limit < tp) {
+					cfatal( "Failed to parse non-comment and wrote beyond temp area"     /* _F_  */
+						   , NULL, 0L, NULL);
+					*tp = EOS;
+				}
+// Anima ADD
                 *tp++ = '/';
                 sp--;                       /* To re-read           */
                 break;
@@ -1740,17 +1750,24 @@ not_comment:
                     , NULL, (long) c, NULL);
         case '\t':                          /* Horizontal space     */
         case ' ':
+// Anima ADD
+			if (limit < tp) {
+				cfatal( "Failed to parse space and wrote beyond temp area"     /* _F_  */
+					   , NULL, 0L, NULL);
+				*tp = EOS;
+			}
             if (keep_spaces) {
                 if (c == '\t')
                     *tp++ = '\t';
                 else
-                    *tp++ = ' ';            /* Convert to ' '       */
-            } else if (! (char_type[ *(tp - 1) & UCHARMAX] & HSP)) {
+					*tp++ = ' ';            /* Convert to ' '       */
+            } else if (tp > temp && !(char_type[ *(tp - 1) & UCHARMAX] & HSP)) {
                 *tp++ = ' ';                /* Squeeze white spaces */
-            } else if (mcpp_mode == OLD_PREP && *(tp - 1) == COM_SEP) {
+            } else if (mcpp_mode == OLD_PREP && tp > temp && *(tp - 1) == COM_SEP) {
                 *(tp - 1) = ' ';    /* Replace COM_SEP with ' '     */
             }
-            break;
+// Anima ADD
+			break;
         case '"':                           /* String literal       */
         case '\'':                          /* Character constant   */
             infile->bptr = sp;
@@ -1899,10 +1916,10 @@ static char *   read_a_comment(
 static char *   mcpp_fgets(
     char *  s,
     int     size,
-    FILE *  stream
+    MFILE *  mf		// Anima ADD
 )
 {
-    return fgets( s, size, stream);
+    return mfgets( s, size, mf);	// Anima ADD
 }
 
 static char *   get_line(
@@ -1931,7 +1948,7 @@ static char *   get_line(
     if ((mcpp_debug & MACRO_CALL) && src_line == 0) /* Initialize   */
         com_cat_line.last_line = bsl_cat_line.last_line = 0L;
 
-    while (mcpp_fgets( ptr, (int) (infile->buffer + NBUFF - ptr), infile->fp)
+    while (mcpp_fgets( ptr, (int) (infile->buffer + NBUFF - ptr), infile->mf)	// Anima ADD
             != NULL) {
         /* Translation phase 1  */
         src_line++;                 /* Gotten next physical line    */
@@ -1954,7 +1971,7 @@ static char *   get_line(
                 cfatal( "Too long logical line"             /* _F_  */
                         , NULL, 0L, NULL);
         }
-        if (*(ptr + len - 1) != '\n')   /* Unterminated source line */
+        if (len == 0 || *(ptr + len - 1) != '\n')   /* Unterminated source line */	// Anima ADD
             break;
         if (len >= 2 && *(ptr + len - 2) == '\r') {         /* [CR+LF]      */
             *(ptr + len - 2) = '\n';
@@ -2010,7 +2027,8 @@ static char *   get_line(
     }
 
     /* End of a (possibly included) source file */
-    if (ferror( infile->fp))
+    //if (ferror( infile->fp))		// Anima ADD
+	if (mferror(infile->mf))		// Anima ADD
         cfatal( "File read error", NULL, 0L, NULL);         /* _F_  */
     if ((ptr = at_eof( in_comment)) != NULL)        /* Check at end of file */
         return  ptr;                        /* Partial line supplemented    */
@@ -2202,7 +2220,7 @@ void    unget_ch( void)
     }
 
     if (infile != NULL) {
-        if (mcpp_mode == POST_STD && infile->fp) {
+        if (mcpp_mode == POST_STD && infile->mf) {		// Anima ADD
             switch (insert_sep) {
             case INSERTED_SEP:  /* Have just read an inserted separator */
                 insert_sep = INSERT_SEP;
@@ -2282,7 +2300,7 @@ FILEINFO *  get_file(
     file->bptr = file->buffer;              /* Initialize line ptr  */
     file->buffer[ 0] = EOS;                 /* Force first read     */
     file->line = 0L;                        /* (Not used just yet)  */
-    file->fp = NULL;                        /* No file yet          */
+    file->mf = NULL;                        /* No file yet          */		// Anima ADD
     file->pos = 0L;                         /* No pos to remember   */
     file->parent = infile;                  /* Chain files together */
     file->initif = ifptr;                   /* Initial ifstack      */
@@ -2523,7 +2541,7 @@ static void do_msg(
 
     /* Print source location and diagnostic */
     file = infile;
-    while (file != NULL && (file->fp == NULL || file->fp == (FILE *)-1))
+    while (file != NULL && (file->mf == NULL || file->mf == (MFILE *)-1))		// Anima ADD
         file = file->parent;                        /* Skip macro   */
     if (file != NULL) {
         file->line = src_line;
@@ -2536,7 +2554,7 @@ static void do_msg(
 
     /* Print source line, includers and expanding macros    */
     file = infile;
-    if (file != NULL && file->fp != NULL) {
+    if (file != NULL && file->mf != NULL) {										// Anima ADD
         if (mcpp_mode == OLD_PREP) {
             mcpp_fputs( "    ", ERR);
             put_line( file->buffer, fp_err);
@@ -2547,7 +2565,7 @@ static void do_msg(
         file = file->parent;
     }
     while (file != NULL) {                  /* Print #includes, too */
-        if (file->fp == NULL) {             /* Macro                */
+        if (file->mf == NULL) {             /* Macro                */			// Anima ADD
             if (file->filename) {
                 defp = look_id( file->filename);
                 if ((defp->nargs > DEF_NOARGS_STANDARD)
@@ -2588,7 +2606,7 @@ static void do_msg(
         if (ind_done < ind)
             continue;
         for (file = infile; file; file = file->parent)
-            if (file->fp == NULL && file->filename
+            if (file->mf == NULL && file->filename								// Anima ADD
                     && str_eq( expanding_macro[ ind].name, file->filename))
                 break;                      /* Already reported     */
         if (file)

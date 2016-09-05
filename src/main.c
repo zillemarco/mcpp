@@ -207,7 +207,8 @@
     int     insert_sep = NO_SEP;
 
 /* File pointers for input and output.  */
-    FILE *  fp_in;                  /* Input stream to preprocess   */
+    //FILE *  fp_in;                  /* Input stream to preprocess   */	// Anima ADD
+	MFILE * mf_in;															// Anima ADD
     FILE *  fp_out;                 /* Output stream preprocessed   */
     FILE *  fp_err;                 /* Diagnostics stream           */
     FILE *  fp_debug;               /* Debugging information stream */
@@ -355,7 +356,8 @@ int     main
     init_system();
 #endif
 
-    fp_in = stdin;
+    //fp_in = stdin;		// Anima ADD
+	mf_in = 0;				// Anima ADD
     fp_out = stdout;
     fp_err = stderr;
     fp_debug = stdout;
@@ -372,7 +374,8 @@ int     main
 
     /* Open input file, "-" means stdin.    */
     if (in_file != NULL && ! str_eq( in_file, "-")) {
-        if ((fp_in = fopen( in_file, "r")) == NULL) {
+        //if ((fp_in = fopen( in_file, "r")) == NULL) {		// Anima ADD
+		if ((mf_in = mfopen(in_file)) == NULL) {			// Anima ADD
             mcpp_fprintf( ERR, "Can't open input file \"%s\".\n", in_file);
             errors++;
 #if MCPP_LIB
@@ -409,7 +412,7 @@ int     main
         }
     }
     init_sys_macro();       /* Initialize system-specific macros    */
-    add_file( fp_in, NULL, in_file, in_file, FALSE);
+    add_file( mf_in, NULL, in_file, in_file, FALSE);					// Anima ADD
                                         /* "open" main input file   */
     infile->dirp = inc_dirp;
     infile->sys_header = FALSE;
@@ -435,8 +438,9 @@ fatal_error_exit:
     clear_symtable();
 #endif
 
-    if (fp_in != stdin)
-        fclose( fp_in);
+    //if (fp_in != stdin)	// Anima ADD
+    //    fclose( fp_in);	// Anima ADD
+	mfclose(mf_in);			// Anima ADD
     if (fp_out != stdout)
         fclose( fp_out);
     if (fp_err != stderr)
@@ -451,6 +455,58 @@ fatal_error_exit:
     }
     return  IO_SUCCESS;                             /* No errors    */
 }
+
+// Anima ADD
+#define MAX_OPTIONS 128
+int mcpp_run(
+	const char* in_options,
+	const char* filename,
+	char** outfile,
+	char** outerrors,
+	file_loader in_file_loader
+	)
+{
+	int ret = 0;
+	int argc = 0;
+	char* argv[MAX_OPTIONS];
+	char* options = 0;
+	char* p = 0;
+
+	argv[argc++] = "mcpp";
+	argv[argc++] = filename;
+
+	p = options = strdup(in_options);
+	if (p)
+	{
+		while (*p && argc < MAX_OPTIONS)
+		{
+			// Skip whitespace.
+			while (*p && (*p == ' ' || *p == '\t')) { p++; }
+			// Store pointer to argument.
+			argv[argc++] = p;
+			// Skip argument.
+			while (*p && *p != ' ' && *p != '\t') { p++; }
+			// Add null terminator for argument if needed.
+			if (*p) { *p++ = 0; }
+		}
+	}
+
+	mcpp_use_mem_buffers(1);
+	mfset(in_file_loader);
+	ret = mcpp_lib_main(argc, argv);
+	if (outfile)
+	{
+		*outfile = mcpp_get_mem_buffer(OUT);
+	}
+	if (outerrors)
+	{
+		*outerrors = mcpp_get_mem_buffer(ERR);
+	}
+	free(options);
+
+	return ret;
+}
+// Anima ADD
 
 /*
  * This is the table used to predefine target machine, operating system and

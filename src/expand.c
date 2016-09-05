@@ -896,8 +896,8 @@ static char *   close_macro_inf(
     *out_p = EOS;
     get_ch();                               /* Clear the garbage    */
     unget_ch();
-    if (infile->fp || in_src_n) {
-        if (infile->fp) {           /* Macro call on source file    */
+    if (infile->mf || in_src_n) {										// Anima ADD
+        if (infile->mf) {           /* Macro call on source file    */	// Anima ADD
             e_line_col.line = src_line;
             e_line_col.col = infile->bptr - infile->buffer;
         } else {    /* Macro in argument of parent macro and from source    */
@@ -939,7 +939,7 @@ static DEFBUF * def_special(
         break;
     case DEF_NOARGS_DYNAMIC - 2:            /* __FILE__             */
         for (file = infile; file != NULL; file = file->parent) {
-            if (file->fp != NULL) {
+            if (file->mf != NULL) {												// Anima ADD
                 sprintf( work_buf, "\"%s\"", file->filename);
                 if (str_eq( work_buf, defp->repl))
                     break;                          /* No change    */
@@ -1187,11 +1187,11 @@ static char *   catenate(
     if (*prev_token) {                      /* There is any token   */
         unget_string( prev_token, NULL);    /* Scan once more       */
         c = get_ch();  /* This line should be before the next line. */
-        infile->fp = (FILE *)-1;            /* To check token length*/
+        infile->mf = (MFILE *)-1;            /* To check token length*/	// Anima ADD
         if (mcpp_debug & EXPAND)
             dump_string( "checking generated token", infile->buffer);
         scan_token( c, (workp = work_buf, &workp), work_end);
-        infile->fp = NULL;
+        infile->mf = NULL;												// Anima ADD
         if (*infile->bptr != EOS) {         /* More than a token    */
             if (option_flags.lang_asm) {    /* Assembler source     */
                 if (warn_level & 2)
@@ -2108,7 +2108,7 @@ static char *   insert_to_bptr(
 {
     size_t  bptr_offset = infile->bptr - infile->buffer;
 
-    if (infile->fp == NULL) {               /* Not source file      */
+    if (infile->mf == NULL) {               /* Not source file      */		// Anima ADD
         infile->buffer = xrealloc( infile->buffer
                 , strlen( infile->buffer) + len + 1);
         infile->bptr = infile->buffer + bptr_offset;
@@ -2152,7 +2152,7 @@ static char *   expand_prestd(
     char *  mac_end = &macrobuf[ NMACWORK]; /* End of macrobuf[]    */
     char *  out_p;                          /* Pointer into out[]   */
     char *  mp = macrobuf;                  /* Pointer into macrobuf*/
-    int     len;                            /* Length of a token    */
+    size_t  len;                            /* Length of a token    */		// Anima ADD
     int     token_type;                     /* Type of token        */
     int     c;
 
@@ -2168,12 +2168,12 @@ static char *   expand_prestd(
         goto  err_end;
     }
 
-    while ((c = get_ch()) != CHAR_EOF && infile->fp == NULL) {
+    while ((c = get_ch()) != CHAR_EOF && infile->mf == NULL) {				// Anima ADD
                             /* While the input stream is a macro    */
         while (c == ' ' || c == '\t') {     /* Output the spaces    */
             *mp++ = c;
             c = get_ch();
-            if (infile == NULL || infile->fp != NULL)
+            if (infile == NULL || infile->mf != NULL)						// Anima ADD
                 goto  exp_end;
         }
         token_type = rescan_pre( c, mp, mac_end);   /* Scan token   */
@@ -2614,7 +2614,7 @@ static int  get_an_arg(
     size_t  len;
 
     if (trace_macro) {
-        trace_arg = m_num && infile->fp;
+        trace_arg = m_num && infile->mf;								// Anima ADD
         if (m_num) {
             if (trace_arg) {        /* The macro call is in source  */
                 s_line_col.line = src_line;
@@ -2706,7 +2706,7 @@ static int  get_an_arg(
             return  0;
         default :                           /* Any token            */
             if (mcpp_mode == STD && token_type == NAM
-                    && c != IN_SRC && c != DEF_MAGIC && infile->fp) {
+                    && c != IN_SRC && c != DEF_MAGIC && infile->mf) {		// Anima ADD
                 len = trace_arg ? IN_SRC_LEN : 1;
                 memmove( prevp + len, prevp, (size_t) (argp - prevp));
                 argp += len;
@@ -2822,7 +2822,7 @@ static int  squeeze_ws(
     int     space = 0;
     int     tsep = 0;
     FILEINFO *      file = infile;
-    FILE *  fp = infile->fp;
+    MFILE *  mf = infile->mf;									// Anima ADD
     int     end_of_file = (out && endf) ? FALSE : TRUE;
 
     while (((char_type[ c = get_ch()] & SPA) && (! standard 
@@ -2910,7 +2910,7 @@ static int  squeeze_ws(
     }
     if (mcpp_mode == POST_STD && file != infile) {
         unget_ch();             /* Arguments cannot cross "file"s   */
-        c = fp ? CHAR_EOF : RT_END; /* EOF is diagnosed by at_eof() */
+        c = mf ? CHAR_EOF : RT_END; /* EOF is diagnosed by at_eof() */		// Anima ADD
     } else if (mcpp_mode == STD && macro_line == MACRO_ERROR
             && file != infile) {            /* EOF                  */
         unget_ch();             /*   diagnosed by at_eof() or only  */
@@ -2926,9 +2926,9 @@ static void skip_macro( void)
 {
     if (infile == NULL)                     /* End of input         */
         return;
-    if (infile->fp)                         /* Source file          */
+    if (infile->mf)                         /* Source file          */		// Anima ADD
         return;
-    while (infile->fp == NULL) {            /* Stacked stuff        */
+    while (infile->mf == NULL) {            /* Stacked stuff        */		// Anima ADD
         infile->bptr += strlen( infile->bptr);
         get_ch();                           /* To the parent "file" */
     }

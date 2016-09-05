@@ -2471,6 +2471,8 @@ static char *   norm_path(
         /* stat() of some systems do not like trailing '/'  */
         slbuf1[ --len] = EOS;
     }
+	if (fname && mfexists(fname))		// Anima ADD
+		return strdup(fname);			// Anima ADD
     if (fname)
         strcat( slbuf1, fname);
     if (stat( slbuf1, & st_buf) != 0        /* Non-existent         */
@@ -3395,7 +3397,8 @@ static int  open_file(
 #endif
     int         len;
     FILEINFO *  file = infile;
-    FILE *      fp;
+    //FILE *      fp;		// Anima ADD
+	MFILE * mf;				// Anima ADD
     char *      fullname;
     const char *    fname;
 
@@ -3435,7 +3438,8 @@ search:
         
     if ((max_open != 0 && max_open <= include_nest)
                             /* Exceed the known limit of open files */
-            || ((fp = fopen( fullname, "r")) == NULL && errno == EMFILE)) {
+//            || ((fp = fopen( fullname, "r")) == NULL && errno == EMFILE)) {		// Anima ADD
+			|| ((mf = mfopen(fullname)) == NULL && errno == EMFILE)) {				// Anima ADD
                             /* Reached the limit for the first time */
         if (mcpp_debug & PATH) {
 #if HOST_COMPILER == BORLANDC
@@ -3452,17 +3456,22 @@ search:
          * Remember the file position and close the includer.
          * The state will be restored by get_line() on end of the included.
          */
-        file->pos = ftell( file->fp);
-        fclose( file->fp);
+        //file->pos = ftell( file->fp);		// Anima ADD
+        //fclose( file->fp);				// Anima ADD
+		file->pos = mftell(file->mf);		// Anima ADD
+		mfclose(file->mf);					// Anima ADD
         /* In case of failure, re-open the includer */
-        if ((fp = fopen( fullname, "r")) == NULL) {
-            file->fp = fopen( cur_fullname, "r");
-            fseek( file->fp, file->pos, SEEK_SET);
+        //if ((fp = fopen( fullname, "r")) == NULL) {		// Anima ADD
+        //    file->fp = fopen( cur_fullname, "r");			// Anima ADD
+        //    fseek( file->fp, file->pos, SEEK_SET);		// Anima ADD
+		if ((mf = mfopen(fullname)) == NULL) {				// Anima ADD
+			file->mf = mfopen(cur_fullname);				// Anima ADD
+			mfseek(file->mf, file->pos);					// Anima ADD
             goto  false;
         }
         if (max_open == 0)      /* Remember the limit of the system */
             max_open = include_nest;
-    } else if (fp == NULL)                  /* No read permission   */ 
+    } else if (mf == NULL)                  /* No read permission   */ 	// Anima ADD
         goto  false;
     /* Truncate buffer of the includer to save memory   */
     len = (int) (file->bptr - file->buffer);
@@ -3473,7 +3482,7 @@ search:
 
     if (! include_opt)
         sharp( NULL, 0);    /* Print includer's line num and fname  */
-    add_file( fp, src_dir, filename, fullname, include_opt);
+    add_file( mf, src_dir, filename, fullname, include_opt);				// Anima ADD
     /* Add file-info to the linked list.  'infile' has been just renewed    */
     /*
      * Remember the directory for #include_next.
@@ -3518,7 +3527,8 @@ false:
 }
 
 void    add_file(
-    FILE *      fp,                         /* Open file pointer    */
+    //FILE *      fp,                         /* Open file pointer    */	// Anima ADD
+	MFILE * mf,																// Anima ADD
     const char *    src_dir,                /* Directory of source  */
     const char *    filename,               /* Name of the file     */
     const char *    fullname,               /* Full path list       */
@@ -3539,7 +3549,7 @@ void    add_file(
     fullname = set_fname( fullname);    /* Search or append to fnamelist[]  */
     file = get_file( filename, src_dir, fullname, (size_t) NBUFF, include_opt);
                                         /* file == infile           */
-    file->fp = fp;                      /* Better remember FILE *   */
+    file->mf = mf;                      /* Better remember FILE *   */		// Anima ADD
     cur_fname = filename;
 
     if (include_nest >= INCLUDE_NEST)   /* Probably recursive #include      */
@@ -3747,7 +3757,7 @@ static int      search_framework(
         const char *    dot;
         size_t  len;
 
-        if (! file->fp)
+        if (! file->mf)	// Anima ADD
             continue;
         dot = strstr( file->real_fname, dot_frame);
         if (! dot)
@@ -3876,7 +3886,7 @@ void    sharp(
     file = sharp_file ? sharp_file : infile;
     if (! file)
         return;
-    while (! file->fp)
+    while (! file->mf)		// Anima ADD
         file = file->parent;
     line = sharp_file ? sharp_file->line : src_line;
     if (no_output || option_flags.p || file == NULL
@@ -4090,7 +4100,7 @@ void    do_pragma( void)
     } else if (str_eq( identifier, "once")) {   /* #pragma once     */
        if (! is_junk()) {
             file = infile;
-            while (file->fp == NULL)
+            while (file->mf == NULL)		// Anima ADD
                 file = file->parent;
             do_once( file->full_fname);
             goto  skip_nl;
@@ -4584,7 +4594,8 @@ static void do_preprocessed( void)
     lbuf = file->bptr = file->buffer;           /* Reset file->bptr */
 
     /* Copy the input to output until a comment line appears.       */
-    while (fgets( lbuf, NBUFF, file->fp) != NULL
+    //while (fgets( lbuf, NBUFF, file->fp) != NULL		// Anima ADD
+	while (mfgets(lbuf, NBUFF, file->mf) != NULL		// Anima ADD
             && memcmp( lbuf, "/*", 2) != 0) {
 #if STD_LINE_PREFIX == FALSE
         if (memcmp( lbuf, "#line ", 6) == 0) {
@@ -4601,7 +4612,8 @@ static void do_preprocessed( void)
                 , NULL, 0L, NULL);
 
     /* Define macros according to the #define lines.    */
-    while (fgets( lbuf, NWORK, file->fp) != NULL) {
+    //while (fgets( lbuf, NWORK, file->fp) != NULL) {		// Anima ADD
+	while (mfgets(lbuf, NWORK, file->mf) != NULL) {			// Anima ADD
         if (memcmp( lbuf, "/*", 2) == 0) {
                                     /* Standard predefined macro    */
             continue;
@@ -4911,3 +4923,131 @@ void    clear_filelist( void)
 }
 #endif
 
+// Anima ADD
+/** Callback to retrieve file contents. */
+file_loader g_file_loader = {0};
+
+void mfset(file_loader in_file_loader)
+{
+	g_file_loader = in_file_loader;
+}
+
+int mfexists(const char* filename)
+{
+	int exists = 0;
+	if (g_file_loader.get_file_contents)
+	{
+		exists = g_file_loader.get_file_contents(g_file_loader.user_data, filename, 0, 0) == 0 ? 0 : 1;
+	}
+	return exists;
+}
+
+MFILE* mfopen(const char* filename)
+{
+	MFILE* mf = 0;
+	FILE* fp = 0;
+	char* contents = 0;
+	char* contents_end = 0;
+	size_t contents_size = 0;
+
+	if (g_file_loader.get_file_contents
+		&& g_file_loader.get_file_contents(g_file_loader.user_data, filename, &contents, &contents_size) != 0)
+	{
+		contents_end = contents + contents_size;
+	}
+	else
+	{
+		/* failed to load file, ensure contents is still NULL */
+		contents = 0;
+	}
+
+	if (contents == 0)
+	{
+		fp = fopen(filename, "r");
+	}
+
+	if (contents || fp)
+	{
+		mf = (MFILE*)malloc(sizeof(MFILE));
+		mf->fp = fp;
+		mf->start = contents;
+		mf->end = contents_end;
+		mf->cur = mf->start;
+	}
+	return mf;
+}
+
+void mfclose(MFILE* mf)
+{
+	if (mf)
+	{
+		if (mf->fp)
+		{
+			fclose(mf->fp);
+		}
+		free(mf);
+	}
+}
+
+void mfseek(MFILE* mf, int pos)
+{
+	if (mf->fp)
+	{
+		fseek(mf->fp, pos, SEEK_SET);
+	}
+	else
+	{
+		mf->cur = mf->start + pos;
+		if (mf->cur > mf->end)
+		{
+			mf->cur = mf->end;
+		}
+	}
+}
+
+char* mfgets(char* str, int size, MFILE* mf)
+{
+	char c;
+	char* ostr = str;
+
+	if (mf->fp)
+	{
+		return fgets(str, size, mf->fp);
+	}
+
+	if (mf->cur == mf->end)
+	{
+		return 0;
+	}
+
+	while (str && size-- > 1 && mf->cur < mf->end)
+	{
+		c = *mf->cur++;
+		*str++ = c;
+		if (c == 0 || c == '\n')
+		{
+			break;
+		}
+	}
+	*str++ = 0;
+	return ostr;
+}
+
+int mferror(MFILE* mf)
+{
+	if (mf->fp)
+	{
+		return ferror(mf->fp);
+	}
+	return 0;
+}
+
+int mftell(MFILE* mf)
+{
+	if (mf->fp)
+	{
+		return ftell(mf->fp);
+	}
+	return mf->cur - mf->start;
+}
+// Anima ADD
