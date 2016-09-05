@@ -17,3 +17,7 @@ string(REPLACE "$_bin_dir_$" "${CMAKE_INSTALL_PREFIX}/bin" makefile ${makefile})
 string(REPLACE "$_inc_dir_$" "${CMAKE_INSTALL_PREFIX}/include" makefile ${makefile})
 
 file(WRITE ${PROJECT_SOURCE_DIR}/src/Makefile ${makefile})
+
+file(MAKE_DIRECTORY "${CMAKE_INSTALL_PREFIX}/lib")
+file(MAKE_DIRECTORY "${CMAKE_INSTALL_PREFIX}/bin")
+file(MAKE_DIRECTORY "${CMAKE_INSTALL_PREFIX}/include")
