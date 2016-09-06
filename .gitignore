@@ -216,10 +216,10 @@ pip-log.txt
 .mr.developer.cfg
 
 # Lock all src folder content
-#src/Makefile
-#src/noconfig.[Hh].rej
-#src/noconfig.[Hh]
-src/
+# src/Makefile
+# src/noconfig.[Hh].rej
+# src/noconfig.[Hh]
+src/**/*
 
 # Allow only certain files inside src folder
 !src/cc1.c
