@@ -215,6 +215,32 @@ pip-log.txt
 #Mr Developer
 .mr.developer.cfg
 
-src/Makefile
-src/noconfig.[Hh].rej
-src/noconfig.[Hh]
+# Lock all src folder content
+#src/Makefile
+#src/noconfig.[Hh].rej
+#src/noconfig.[Hh]
+src/
+
+# Allow only certain files inside src folder
+!src/cc1.c
+!src/config.in.h
+!src/configed.[Hh]
+!src/directive.c
+!src/eval.c
+!src/expand.c
+!src/internal.[Hh]
+!src/main.c
+!src/main_libmcpp.c
+!src/Makefile.am
+!src/Makefile.in
+!src/mbchar.c
+!src/mcpp_lib.def
+!src/mcpp_lib.h
+!src/mcpp_out.h
+!src/preproc.c
+!src/set_mcpp.sh
+!src/support.c
+!src/system.c
+!src/system.[Hh]
+!src/testmain.c
+!src/unset_mcpp.sh
