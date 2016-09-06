@@ -216,5 +216,5 @@ pip-log.txt
 .mr.developer.cfg
 
 src/Makefile
-src/noconfig.h
-src/noconfig.h.rej
+src/noconfig.[Hh].rej
+src/noconfig.[Hh]
