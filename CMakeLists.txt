@@ -7,9 +7,9 @@ else()
     message(FATAL_ERROR "Unrecognized compiler")
 endif()
 
-execute_process(COMMAND cp ${PROJECT_SOURCE_DIR}/noconfig/noconfig.h ${PROJECT_SOURCE_DIR}/src/noconfig.h)
-execute_process(COMMAND patch ${PROJECT_SOURCE_DIR}/src/noconfig.h ${PROJECT_SOURCE_DIR}/noconfig/${PATCH_FILE_NAME})
-execute_process(COMMAND cp ${PROJECT_SOURCE_DIR}/noconfig/${MAKE_FILE_NAME} ${PROJECT_SOURCE_DIR}/src/Makefile)
+execute_process(COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/noconfig/noconfig.h" "${PROJECT_SOURCE_DIR}/src/noconfig.h")
+execute_process(COMMAND patch "${PROJECT_SOURCE_DIR}/src/noconfig.h" "${PROJECT_SOURCE_DIR}/noconfig/${PATCH_FILE_NAME}")
+execute_process(COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/noconfig/${MAKE_FILE_NAME}" "${PROJECT_SOURCE_DIR}/src/Makefile")
 
 file(READ ${PROJECT_SOURCE_DIR}/src/Makefile makefile)
 
