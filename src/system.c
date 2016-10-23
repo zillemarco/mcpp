@@ -2471,8 +2471,16 @@ static char *   norm_path(
         /* stat() of some systems do not like trailing '/'  */
         slbuf1[ --len] = EOS;
     }
-	if (fname && mfexists(fname))		// Anima ADD
-		return strdup(fname);			// Anima ADD
+	if (fname && mfexists(fname))		                // Anima ADD
+    {                                                   // Anima ADD
+        char* fname_copy = malloc(strlen(fname) + 1);   // Anima ADD
+        if(fname_copy)                                  // Anima ADD
+        {                                               // Anima ADD
+            strcpy(fname_copy, fname);                  // Anima ADD
+        }                                               // Anima ADD
+                                                        // Anima ADD
+		return fname_copy;			                    // Anima ADD
+    }
     if (fname)
         strcat( slbuf1, fname);
     if (stat( slbuf1, & st_buf) != 0        /* Non-existent         */

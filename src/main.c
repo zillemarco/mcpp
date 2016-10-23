@@ -475,7 +475,14 @@ int mcpp_run(
 	argv[argc++] = "mcpp";
 	argv[argc++] = filename;
 
-	p = options = strdup(in_options);
+    p = malloc(strlen(in_options) + 1);
+    if(p)
+    {
+        strcpy(p, in_options);
+    }
+
+    options = p;
+    
 	if (p)
 	{
 		while (*p && argc < MAX_OPTIONS)
