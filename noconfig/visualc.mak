@@ -50,6 +50,7 @@ CFLAGS = $(CFLAGS) -O2 -MD -DNDEBUG
 # UNICODE support: DO 'nmake UNICODE=1 ...'
 !ifdef UNICODE
 CFLAGS = $(CFLAGS) -DUNICODE -D_UNICODE
+LIBSUFFIX = u$(LIBSUFFIX)
 !endif
 
 mcpplib_lib:	$(OBJS)
