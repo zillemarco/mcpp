@@ -47,6 +47,11 @@ LIBSUFFIX = d
 CFLAGS = $(CFLAGS) -O2 -MD -DNDEBUG
 !endif
 
+# UNICODE support: DO 'nmake UNICODE=1 ...'
+!ifdef UNICODE
+CFLAGS = $(CFLAGS) -DUNICODE -D_UNICODE
+!endif
+
 mcpplib_lib:	$(OBJS)
 	lib -out:mcpp$(LIBSUFFIX).lib $(OBJS)
 
