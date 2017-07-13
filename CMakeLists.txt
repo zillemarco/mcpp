@@ -7,8 +7,14 @@ else()
     message(FATAL_ERROR "Unrecognized compiler")
 endif()
 
+set(PATCH_APP "patch")
+
+if(EXTERNAL_PATCH_APP)
+    set(PATCH_APP EXTERNAL_PATCH_APP)
+endif()
+
 execute_process(COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_SOURCE_DIR}/noconfig/noconfig.h" "${PROJECT_SOURCE_DIR}/src/noconfig.h")
-execute_process(COMMAND "patch" "${PROJECT_SOURCE_DIR}/src/noconfig.h" "${PROJECT_SOURCE_DIR}/noconfig/${PATCH_FILE_NAME}" RESULT_VARIABLE patch_result)
+execute_process(COMMAND "${PATCH_APP}" "${PROJECT_SOURCE_DIR}/src/noconfig.h" "${PROJECT_SOURCE_DIR}/noconfig/${PATCH_FILE_NAME}" RESULT_VARIABLE patch_result)
 
 if(NOT patch_result EQUAL 0)
     message(FATAL_ERROR "Patch error: ${patch_result}")
