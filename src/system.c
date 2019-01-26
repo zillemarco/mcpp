@@ -224,42 +224,42 @@ static int      mcpp_getopt( int argc, char * const * argv, const char * opts, p
                 /* getopt() to prevent linking of glibc getopt  */
 
 #if MCPP_LIB
-void    init_system( void)
+void    init_system(processing_data_t* processingData)
 /* Initialize static variables  */
 {
-    if (sharp_filename)
-        free( sharp_filename);
-    sharp_filename = NULL;
-    incend = incdir = NULL;
-    fnamelist = once_list = NULL;
-    search_rule = SEARCH_INIT;
-    mb_changed = nflag = ansi = compat_mode = FALSE;
-    mkdep_fp = NULL;
-    mkdep_target = mkdep_mf = mkdep_md = mkdep_mq = mkdep_mt = NULL;
-    std_val = -1L;
-    def_cnt = undef_cnt = 0;
-    mcpp_optind = mcpp_opterr = 1;
+    if (processingData->systemData.sharp_filename)
+        free( processingData->systemData.sharp_filename);
+    processingData->systemData.sharp_filename = NULL;
+    processingData->systemData.incend = processingData->systemData.incdir = NULL;
+    processingData->systemData.fnamelist = processingData->systemData.once_list = NULL;
+    processingData->systemData.search_rule = SEARCH_INIT;
+    processingData->systemData.mb_changed = processingData->systemData.nflag = processingData->systemData.ansi = processingData->systemData.compat_mode = FALSE;
+    processingData->systemData.mkdep_fp = NULL;
+    processingData->systemData.mkdep_target = processingData->systemData.mkdep_mf = processingData->systemData.mkdep_md = processingData->systemData.mkdep_mq = processingData->systemData.mkdep_mt = NULL;
+    processingData->systemData.std_val = -1L;
+    processingData->systemData.def_cnt = processingData->systemData.undef_cnt = 0;
+    processingData->systemData.mcpp_optind = processingData->systemData.mcpp_opterr = 1;
 #if COMPILER == GNUC
-    sys_dirp = NULL;
-    sysroot = NULL;
-    gcc_work_dir = i_split = FALSE;
-    quote_dir_end = quote_dir;
-    dDflag = dMflag = FALSE;
+    processingData->systemData.sys_dirp = NULL;
+    processingData->systemData.sysroot = NULL;
+    processingData->systemData.gcc_work_dir = processingData->systemData.i_split = FALSE;
+    processingData->systemData.quote_dir_end = quote_dir;
+    processingData->systemData.dDflag = dMflag = FALSE;
 #endif
 #if COMPILER == MSC
-    wchar_t_modified = FALSE;
+    processingData->systemData.wchar_t_modified = FALSE;
 #endif
 #if COMPILER == GNUC || COMPILER == MSC
-    preinc_end = preinclude;
+    processingData->systemData.preinc_end = preinclude;
 #endif
 #if SYSTEM == SYS_CYGWIN
-    no_cygwin = FALSE;
+    processingData->systemData.no_cygwin = FALSE;
 #elif   SYSTEM == SYS_MAC
-    num_framework = sys_framework = 0;
-    to_search_framework = NULL;
+    processingData->systemData.num_framework = sys_framework = 0;
+    processingData->systemData.to_search_framework = NULL;
 #endif
 #if NO_DIR
-    no_dir = FALSE;
+    processingData->systemData.no_dir = FALSE;
 #endif
 }
 
@@ -1456,7 +1456,7 @@ static void usage(int     opt, processing_data_t* processingData)
         processingData->mcpp_fprintf( ERR, processingData, illegopt, opt, processingData->systemData.mcpp_optarg ? processingData->systemData.mcpp_optarg : processingData->null);
     version(processingData);
 #if MCPP_LIB
-    mes[ 1] = argv0;
+    mes[ 1] = processingData->systemData.argv0;
 #endif
     while (*mpp)
         processingData->mcpp_fputs( *mpp++, ERR, processingData);
@@ -4768,7 +4768,7 @@ void    at_end( void)
 }
 
 #if MCPP_LIB
-void    clear_filelist( void)
+void    clear_filelist(processing_data_t* processingData)
 /*
  * Free malloced memory for filename-list and directory-list.
  */
@@ -4776,14 +4776,14 @@ void    clear_filelist( void)
     const char **   incp;
     INC_LIST *  namep;
 
-    for (incp = incdir; incp < incend; incp++)
+    for (incp = processingData->systemData.incdir; incp < processingData->systemData.incend; incp++)
         free( (void *) *incp);
-    free( (void *) incdir);
-    for (namep = fnamelist; namep < fname_end; namep++)
+    free( (void *) processingData->systemData.incdir);
+    for (namep = processingData->systemData.fnamelist; namep < processingData->systemData.fname_end; namep++)
         free( (void *) namep->name);
-    free( (void *) fnamelist);
-    if (standard)
-        free( (void *) once_list);
+    free( (void *) processingData->systemData.fnamelist);
+    if (processingData->standard)
+        free( (void *) processingData->systemData.once_list);
 }
 #endif
 

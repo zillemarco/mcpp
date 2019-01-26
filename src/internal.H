@@ -451,6 +451,15 @@ typedef struct catenated_line {
                         /* Length of successively catenated lines   */
 } CAT_LINE;
 
+#if MCPP_LIB
+    typedef struct  mem_buf {
+        char *  buffer;
+        char *  entry_pt;
+        size_t  size;
+        size_t  bytes_avail;
+    } MEMBUF;
+#endif
+
 typedef struct support_data_ {
     expanding_macro_t expanding_macro[EXP_MAC_IND_MAX];
 
@@ -462,6 +471,11 @@ typedef struct support_data_ {
     CAT_LINE com_cat_line; /* Datum on the last catenated line by a line-crossing comment  */
 
     int dollar_diagnosed;   /* Flag of diagnosing '$'   */
+    
+#if MCPP_LIB
+    int  use_mem_buffers;
+    MEMBUF   mem_buffers[ NUM_OUTDEST];
+#endif
 
 } support_data_t;
 
@@ -707,12 +721,12 @@ typedef struct processing_data_ {
     /* Function pointer to expand_macro() functions.    */
     char *(*expand_macro)(DEFBUF *defp, char *out, char *out_end, LINE_COL line_col, int *pragma_op);
     /* Function pointer to mb_read_*() functions.   */
-    size_t (*mb_read)(int c1, char **in_pp, char **out_pp, processing_data_t* processingData);
+    size_t (*mb_read)(int c1, char **in_pp, char **out_pp, struct processing_data_* processingData);
 
     /* Support for alternate output mechanisms (e.g. memory buffers) */
-    int (* mcpp_fputc)( int c, OUTDEST od, processing_data_t* processingData);
-    int (* mcpp_fputs)( const char * s, OUTDEST od, processing_data_t* processingData);
-    int (* mcpp_fprintf)( OUTDEST od, processing_data_t* processingData, const char * format, ...);
+    int (* mcpp_fputc)( int c, OUTDEST od, struct processing_data_* processingData);
+    int (* mcpp_fputs)( const char * s, OUTDEST od, struct processing_data_* processingData);
+    int (* mcpp_fprintf)( OUTDEST od, struct processing_data_* processingData, const char * format, ...);
 
     params_data_t parametersProcessingData;
     macros_data_t macrosProcessingData;
@@ -863,17 +877,17 @@ extern char *   stpcpy( char * dest, const char * src);
 extern void     clear_symtable(processing_data_t* data);
                 /* Free all macro definitions   */
 /* system.c     */
-extern void     clear_filelist( void);
+extern void     clear_filelist(processing_data_t* data);
                 /* Free filename and directory list     */
 /* The following 5 functions are to Initialize static variables.    */
 /* directive.c  */
-extern void     init_directive( void);
+extern void     init_directive(processing_data_t* data);
 /* eval.c   */
-extern void     init_eval( void);
+extern void     init_eval( processing_data_t* data);
 /* support.c    */
-extern void     init_support( void);
+extern void     init_support( processing_data_t* data);
 /* system.c */
-extern void     init_system( void);
+extern void     init_system( processing_data_t* data);
 
 #if HOST_COMPILER == GNUC && (SYS_FAMILY == SYS_UNIX && SYSTEM != SYS_CYGWIN)
 #pragma GCC visibility pop

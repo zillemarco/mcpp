@@ -259,9 +259,9 @@ static const SIZES size_table[] = {
 #define is_unary(op) (FIRST_UNOP <= op && op <= LAST_UNOP)
 
 #if MCPP_LIB
-void init_eval(void)
+void init_eval(processing_data_t* processingData)
 {
-    skip = 0;
+    processingData->skip = 0;
 }
 #endif
 

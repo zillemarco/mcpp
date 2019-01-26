@@ -107,49 +107,37 @@ static void     dump_token( int token_type, const char * cp, processing_data_t* 
                 /* Dump a token and its type    */
 
 #if MCPP_LIB
-static int  use_mem_buffers = FALSE;
 
-void    init_support( void)
+void    init_support( processing_data_t* processingData)
 {
-    in_token = in_string = squeezews = FALSE;
-    bsl_cat_line.len[ 0] = com_cat_line.len[ 0] = 0;
-    clear_exp_mac();
+    processingData->supportProcessingData.in_token = processingData->supportProcessingData.in_string = processingData->supportProcessingData.squeezews = FALSE;
+    processingData->supportProcessingData.bsl_cat_line.len[ 0] = processingData->supportProcessingData.com_cat_line.len[ 0] = 0;
+    clear_exp_mac(processingData);
 }
 
-typedef struct  mem_buf {
-    char *  buffer;
-    char *  entry_pt;
-    size_t  size;
-    size_t  bytes_avail;
-} MEMBUF;
-
-static MEMBUF   mem_buffers[ NUM_OUTDEST];
-
-void    mcpp_use_mem_buffers(
-    int    tf
-)
+void mcpp_use_mem_buffers(int tf, processing_data_t* processingData)
 {
     int i;
 
-    use_mem_buffers = tf ? TRUE : FALSE;
+    processingData->supportProcessingData.use_mem_buffers = tf ? TRUE : FALSE;
 
     for (i = 0; i < NUM_OUTDEST; ++i) {
-        if (mem_buffers[ i].buffer)
+        if (processingData->supportProcessingData.mem_buffers[ i].buffer)
             /* Free previously allocated memory buffer  */
-            free( mem_buffers[ i].buffer);
-        if (use_mem_buffers) {
+            free( processingData->supportProcessingData.mem_buffers[ i].buffer);
+        if (processingData->supportProcessingData.use_mem_buffers) {
             /* Output to memory buffers instead of files    */
-            mem_buffers[ i].buffer = NULL;
-            mem_buffers[ i].entry_pt = NULL;
-            mem_buffers[ i].size = 0;
-            mem_buffers[ i].bytes_avail = 0;
+            processingData->supportProcessingData.mem_buffers[ i].buffer = NULL;
+            processingData->supportProcessingData.mem_buffers[ i].entry_pt = NULL;
+            processingData->supportProcessingData.mem_buffers[ i].size = 0;
+            processingData->supportProcessingData.mem_buffers[ i].bytes_avail = 0;
         }
     }
 }
 
-int    using_mem_buffers( void)
+int using_mem_buffers( processing_data_t* processingData)
 {
-    return use_mem_buffers;
+    return processingData->supportProcessingData.use_mem_buffers;
 }
 
 #define BUF_INCR_SIZE   (NWORK * 2)
@@ -189,14 +177,15 @@ static char *   append_to_buffer(
 
 static int  mem_putc(
     int     c,
-    OUTDEST od
+    OUTDEST od,
+    processing_data_t* processingData
 )
 {
     char string[ 1];
 
     string[ 0] = (char) c;
 
-    if (append_to_buffer( &(mem_buffers[ od]), string, 1) != NULL)
+    if (append_to_buffer( &(processingData->supportProcessingData.mem_buffers[ od]), string, 1) != NULL)
         return 0;
     else
         return !0;
@@ -204,20 +193,22 @@ static int  mem_putc(
 
 static int  mem_puts(
     const char *    s,
-    OUTDEST od
+    OUTDEST od,
+    processing_data_t* processingData
 )
 {
-    if (append_to_buffer( &(mem_buffers[od]), s, strlen(s)) != NULL)
+    if (append_to_buffer( &(processingData->supportProcessingData.mem_buffers[od]), s, strlen(s)) != NULL)
         return 0;
     else
         return !0;
 }
 
 char *  mcpp_get_mem_buffer(
-    OUTDEST od
+    OUTDEST od,
+    processing_data_t* processingData
 )
 {
-    return mem_buffers[ od].buffer;
+    return processingData->supportProcessingData.mem_buffers[ od].buffer;
 }
 
 #endif  /* MCPP_LIB */
@@ -243,8 +234,8 @@ int    mcpp_lib_fputc(
 )
 {
 #if MCPP_LIB
-    if (use_mem_buffers) {
-        return mem_putc( c, od);
+    if (processingData->supportProcessingData.use_mem_buffers) {
+        return mem_putc( c, od, processingData);
     } else {
 #endif
         FILE *  stream = DEST2FP(od, processingData);
@@ -262,8 +253,8 @@ int    mcpp_lib_fputs(
 )
 {
 #if MCPP_LIB
-    if (use_mem_buffers) {
-        return mem_puts( s, od);
+    if (processingData->supportProcessingData.use_mem_buffers) {
+        return mem_puts( s, od, processingData);
     } else {
 #endif
         FILE *  stream = DEST2FP(od, processingData);
@@ -291,13 +282,13 @@ int    mcpp_lib_fprintf(
 
         va_start( ap, format);
 #if MCPP_LIB
-        if (use_mem_buffers) {
+        if (processingData->supportProcessingData.use_mem_buffers) {
             static char     mem_buffer[ NWORK];
 
             rc = vsprintf( mem_buffer, format, ap);
 
             if (rc != 0) {
-                rc = mem_puts( mem_buffer, od);
+                rc = mem_puts( mem_buffer, od, processingData);
             }
         } else {
 #endif
@@ -327,7 +318,7 @@ void mcpp_init_def_out_func(processing_data_t* processingData)
 }
 
 #if MCPP_LIB
-void    mcpp_reset_def_out_func( void)
+void    mcpp_reset_def_out_func(processing_data_t* processingData)
 {
     processingData->mcpp_fputc = mcpp_lib_fputc;
     processingData->mcpp_fputs = mcpp_lib_fputs;
@@ -335,9 +326,10 @@ void    mcpp_reset_def_out_func( void)
 }
 
 void    mcpp_set_out_func(
-    int (* func_fputc)( int c, OUTDEST od),
-    int (* func_fputs)( const char * s, OUTDEST od),
-    int (* func_fprintf)( OUTDEST od, const char * format, ...)
+    processing_data_t* processingData,
+    int (* func_fputc)( int c, OUTDEST od, processing_data_t* processingData),
+    int (* func_fputs)( const char * s, OUTDEST od, processing_data_t* processingData),
+    int (* func_fprintf)( OUTDEST od, processing_data_t* processingData, const char * format, ...)
 )
 {
     processingData->mcpp_fputc = func_fputc;
@@ -1601,8 +1593,8 @@ int     get_ch(processing_data_t* processingData)
         processingData->src_line = processingData->infile->line;            /* Reset line number    */
         processingData->inc_dirp = processingData->infile->dirp;            /* Includer's directory */
 #if MCPP_LIB
-        mcpp_set_out_func( infile->last_fputc, infile->last_fputs,
-                           infile->last_fprintf);
+        mcpp_set_out_func( processingData, processingData->infile->last_fputc, processingData->infile->last_fputs,
+                           processingData->infile->last_fprintf);
 #endif
         processingData->include_nest--;
         processingData->src_line++;                         /* Next line to #include*/
@@ -2318,9 +2310,9 @@ FILEINFO *  get_file(
     if (processingData->infile != NULL) {                   /* If #include file     */
         processingData->infile->line = processingData->src_line;            /* Save current line    */
 #if MCPP_LIB
-        infile->last_fputc = processingData->mcpp_fputc;
-        infile->last_fputs = processingData->mcpp_fputs;
-        infile->last_fprintf = processingData->mcpp_fprintf;
+        processingData->infile->last_fputc = processingData->mcpp_fputc;
+        processingData->infile->last_fputs = processingData->mcpp_fputs;
+        processingData->infile->last_fprintf = processingData->mcpp_fprintf;
 #endif
     }
     processingData->infile = file;                          /* New current file     */

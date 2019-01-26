@@ -267,6 +267,10 @@ void setup_processing_data(processing_data_t* data)
     data->supportProcessingData.in_string = FALSE;      /* For get_ch() and parse_line()*/
     data->supportProcessingData.squeezews = FALSE;
     data->supportProcessingData.dollar_diagnosed = FALSE;
+    
+    #if MCPP_LIB
+        data->supportProcessingData.use_mem_buffers = FALSE;
+    #endif
 
     data->mcpp_fputc = NULL;
     data->mcpp_fputs = NULL;
@@ -311,7 +315,7 @@ void setup_processing_data(processing_data_t* data)
                                BIGFIVE_IS_ESCAPE_FREE && ISO2022_JP_IS_ESCAPE_FREE)
 
 #if MCPP_LIB
-static void init_main(void);
+static void init_main(processing_data_t* processingData);
 /* Initialize static variables      */
 #endif
 static void init_defines(processing_data_t* processingData);
@@ -346,83 +350,84 @@ static char *esc_mbchar(char *str, char *str_end);
 #endif
 
 #if MCPP_LIB
-static void init_main(void)
+static void init_main(processing_data_t* processingData)
 /* Initialize global variables on re-entering.  */
 {
-    mcpp_mode = STD;
-    cplus_val = stdc_ver = 0L;
-    stdc_val = 0;
-    standard = TRUE;
-    std_line_prefix = STD_LINE_PREFIX;
-    errors = src_col = 0;
-    warn_level = -1;
-    infile = NULL;
-    in_directive = in_define = in_getarg = in_include = in_if = FALSE;
-    src_line = macro_line = in_asm = 0L;
-    mcpp_debug = mkdep = no_output = keep_comments = keep_spaces = 0;
-    include_nest = 0;
-    insert_sep = NO_SEP;
-    mbchar = MBCHAR;
-    ifptr = ifstack;
-    ifstack[0].stat = WAS_COMPILING;
-    ifstack[0].ifline = ifstack[0].elseline = 0L;
-    std_limits.str_len = NBUFF;
-    std_limits.id_len = IDMAX;
-    std_limits.n_mac_pars = NMACPARS;
-    option_flags.c = option_flags.k = option_flags.z = option_flags.p = option_flags.q = option_flags.v = option_flags.lang_asm = option_flags.no_source_line = option_flags.dollar_in_name = FALSE;
-    option_flags.trig = TRIGRAPHS_INIT;
-    option_flags.dig = DIGRAPHS_INIT;
+    processingData->mcpp_mode = STD;
+    processingData->cplus_val = processingData->stdc_ver = 0L;
+    processingData->stdc_val = 0;
+    processingData->standard = TRUE;
+    processingData->std_line_prefix = STD_LINE_PREFIX;
+    processingData->errors = processingData->src_col = 0;
+    processingData->warn_level = -1;
+    processingData->infile = NULL;
+    processingData->in_directive = processingData->in_define = processingData->in_getarg = processingData->in_include = processingData->in_if = FALSE;
+    processingData->src_line = processingData->macro_line = processingData->in_asm = 0L;
+    processingData->mcpp_debug = processingData->mkdep = processingData->no_output = processingData->keep_comments = processingData->keep_spaces = 0;
+    processingData->include_nest = 0;
+    processingData->insert_sep = NO_SEP;
+    processingData->mbchar = MBCHAR;
+    processingData->ifptr = processingData->ifstack;
+    processingData->ifstack[0].stat = WAS_COMPILING;
+    processingData->ifstack[0].ifline = processingData->ifstack[0].elseline = 0L;
+    processingData->std_limits.str_len = NBUFF;
+    processingData->std_limits.id_len = IDMAX;
+    processingData->std_limits.n_mac_pars = NMACPARS;
+    processingData->option_flags.c = processingData->option_flags.k = processingData->option_flags.z = processingData->option_flags.p = processingData->option_flags.q = processingData->option_flags.v = processingData->option_flags.lang_asm = processingData->option_flags.no_source_line = processingData->option_flags.dollar_in_name = FALSE;
+    processingData->option_flags.trig = TRIGRAPHS_INIT;
+    processingData->option_flags.dig = DIGRAPHS_INIT;
 }
 
-int mcpp_lib_main
-#else
-int main
-#endif
-    (int argc, char **argv)
+int mcpp_lib_main(int argc, char **argv, processing_data_t* processingData)
 {
-    processing_data_t processingData;
-    setup_processing_data(&processingData);
-
+#else
+int main(int argc, char **argv)
+{
+    processing_data_t localProcessingData;
+    processing_data_t* processingData = &localProcessingData;
+    setup_processing_data(processingData);
+#endif
+    
     char *in_file = NULL;
     char *out_file = NULL;
     char *stdin_name = "<stdin>";
 
-    if (setjmp(processingData.error_exit) == -1)
+    if (setjmp(processingData->error_exit) == -1)
     {
-        processingData.errors++;
+        processingData->errors++;
         goto fatal_error_exit;
     }
 
 #if MCPP_LIB
     /* Initialize global and static variables.  */
-    init_main();
-    init_directive();
-    init_eval();
-    init_support();
-    init_system();
+    init_main(processingData);
+    init_directive(processingData);
+    init_eval(processingData);
+    init_support(processingData);
+    init_system(processingData);
 #endif
 
-    processingData.mf_in = 0;
-    processingData.fp_out = stdout;
-    processingData.fp_err = stderr;
-    processingData.fp_debug = stdout;   /* Debugging information is output to stdout in order to synchronize with preprocessed output. */
+    processingData->mf_in = 0;
+    processingData->fp_out = stdout;
+    processingData->fp_err = stderr;
+    processingData->fp_debug = stdout;   /* Debugging information is output to stdout in order to synchronize with preprocessed output. */
     
-    processingData.inc_dirp = &processingData.null;                            /* Initialize to current (null) directory   */
-    processingData.cur_fname = processingData.cur_fullname = "(predefined)";   /* For predefined macros    */
+    processingData->inc_dirp = &processingData->null;                            /* Initialize to current (null) directory   */
+    processingData->cur_fname = processingData->cur_fullname = "(predefined)";   /* For predefined macros    */
 
-    mcpp_init_def_out_func(&processingData);
-    init_defines(&processingData);               /* Predefine macros     */
-    mb_init(&processingData);                    /* Should be initialized prior to get options   */
-    do_options(argc, argv, &in_file, &out_file, &processingData); /* Command line options */
+    mcpp_init_def_out_func(processingData);
+    init_defines(processingData);               /* Predefine macros     */
+    mb_init(processingData);                    /* Should be initialized prior to get options   */
+    do_options(argc, argv, &in_file, &out_file, processingData); /* Command line options */
 
     /* Open input file, "-" means stdin.    */
     if (in_file != NULL && !str_eq(in_file, "-"))
     {
         //if ((fp_in = fopen( in_file, "r")) == NULL) {		// Anima ADD
-        if ((processingData.mf_in = mfopen(in_file)) == NULL)
+        if ((processingData->mf_in = mfopen(in_file)) == NULL)
         { // Anima ADD
-            processingData.mcpp_fprintf(ERR, &processingData, "Can't open input file \"%s\".\n", in_file);
-            processingData.errors++;
+            processingData->mcpp_fprintf(ERR, processingData, "Can't open input file \"%s\".\n", in_file);
+            processingData->errors++;
 #if MCPP_LIB
             goto fatal_error_exit;
 #else
@@ -438,10 +443,10 @@ int main
     /* Open output file, "-" means stdout.  */
     if (out_file != NULL && !str_eq(out_file, "-"))
     {
-        if ((processingData.fp_out = fopen(out_file, "w")) == NULL)
+        if ((processingData->fp_out = fopen(out_file, "w")) == NULL)
         {
-            processingData.mcpp_fprintf(ERR, &processingData, &processingData, "Can't open output file \"%s\".\n", out_file);
-            processingData.errors++;
+            processingData->mcpp_fprintf(ERR, processingData, processingData, "Can't open output file \"%s\".\n", out_file);
+            processingData->errors++;
 #if MCPP_LIB
             goto fatal_error_exit;
 #else
@@ -449,15 +454,15 @@ int main
 #endif
         }
 
-        processingData.fp_debug = processingData.fp_out;
+        processingData->fp_debug = processingData->fp_out;
     }
 
-    if (processingData.option_flags.q)
+    if (processingData->option_flags.q)
     { /* Redirect diagnostics */
-        if ((processingData.fp_err = fopen("mcpp.err", "a")) == NULL)
+        if ((processingData->fp_err = fopen("mcpp.err", "a")) == NULL)
         {
-            processingData.errors++;
-            processingData.mcpp_fprintf(OUT, &processingData, "Can't open \"mcpp.err\"\n");
+            processingData->errors++;
+            processingData->mcpp_fprintf(OUT, processingData, "Can't open \"mcpp.err\"\n");
 #if MCPP_LIB
             goto fatal_error_exit;
 #else
@@ -466,58 +471,58 @@ int main
         }
     }
 
-    init_sys_macro(&processingData);                               /* Initialize system-specific macros    */
-    add_file(processingData.mf_in, NULL, in_file, in_file, FALSE, &processingData); // Anima ADD
+    init_sys_macro(processingData);                               /* Initialize system-specific macros    */
+    add_file(processingData->mf_in, NULL, in_file, in_file, FALSE, processingData); // Anima ADD
 
     /* "open" main input file   */
-    processingData.infile->dirp = processingData.inc_dirp;
-    processingData.infile->sys_header = FALSE;
-    processingData.cur_fullname = in_file;
+    processingData->infile->dirp = processingData->inc_dirp;
+    processingData->infile->sys_header = FALSE;
+    processingData->cur_fullname = in_file;
 
-    if (processingData.mkdep && str_eq(processingData.infile->real_fname, stdin_name) == FALSE)
+    if (processingData->mkdep && str_eq(processingData->infile->real_fname, stdin_name) == FALSE)
     {
-        put_depend(in_file, &processingData); /* Putout target file name      */
+        put_depend(in_file, processingData); /* Putout target file name      */
     }
 
-    at_start(&processingData);              /* Do the pre-main commands     */
+    at_start(processingData);              /* Do the pre-main commands     */
 
-    mcpp_main(&processingData); /* Process main file            */
+    mcpp_main(processingData); /* Process main file            */
 
-    if (processingData.mkdep)
+    if (processingData->mkdep)
     {
-        put_depend(NULL, &processingData); /* Append '\n' to dependency line   */
+        put_depend(NULL, processingData); /* Append '\n' to dependency line   */
     }
 
-    at_end(&processingData);             /* Do the final commands        */
+    at_end(processingData);             /* Do the final commands        */
 
 fatal_error_exit:
 #if MCPP_LIB
     /* Free malloced memory */
-    if (mcpp_debug & MACRO_CALL)
+    if (processingData->mcpp_debug & MACRO_CALL)
     {
         if (in_file != stdin_name)
             free(in_file);
     }
     clear_filelist();
-    clear_symtable();
+    clear_symtable(processingData);
 #endif
 
     //if (fp_in != stdin)	// Anima ADD
     //    fclose( fp_in);	// Anima ADD
-    mfclose(processingData.mf_in); // Anima ADD
+    mfclose(processingData->mf_in); // Anima ADD
     
-    if (processingData.fp_out != stdout)
-        fclose(processingData.fp_out);
+    if (processingData->fp_out != stdout)
+        fclose(processingData->fp_out);
 
-    if (processingData.fp_err != stderr)
-        fclose(processingData.fp_err);
+    if (processingData->fp_err != stderr)
+        fclose(processingData->fp_err);
 
-    if (processingData.mcpp_debug & MEMORY)
-        print_heap(&processingData);
+    if (processingData->mcpp_debug & MEMORY)
+        print_heap(processingData);
 
-    if (processingData.errors > 0 && processingData.option_flags.no_source_line == FALSE)
+    if (processingData->errors > 0 && processingData->option_flags.no_source_line == FALSE)
     {
-        processingData.mcpp_fprintf(ERR, &processingData, "%d error%s in preprocessor.\n", processingData.errors, (processingData.errors == 1) ? "" : "s");
+        processingData->mcpp_fprintf(ERR, processingData, "%d error%s in preprocessor.\n", processingData->errors, (processingData->errors == 1) ? "" : "s");
         return IO_ERROR;
     }
 
@@ -574,16 +579,18 @@ int mcpp_run(
         }
     }
 
-    mcpp_use_mem_buffers(1);
+    processing_data_t localProcessingData;
+    setup_processing_data(&localProcessingData);
+    mcpp_use_mem_buffers(1, &localProcessingData);
     mfset(in_file_loader);
-    ret = mcpp_lib_main(argc, argv);
+    ret = mcpp_lib_main(argc, argv, &localProcessingData);
     if (outfile)
     {
-        *outfile = mcpp_get_mem_buffer(OUT);
+        *outfile = mcpp_get_mem_buffer(OUT, &localProcessingData);
     }
     if (outerrors)
     {
-        *outerrors = mcpp_get_mem_buffer(ERR);
+        *outerrors = mcpp_get_mem_buffer(ERR, &localProcessingData);
     }
     free(options);
 

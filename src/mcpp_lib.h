@@ -20,12 +20,13 @@
 #endif
 
 extern DLL_DECL int     mcpp_lib_main( int argc, char ** argv);
-extern DLL_DECL void    mcpp_reset_def_out_func( void);
+extern DLL_DECL void    mcpp_reset_def_out_func(struct processing_data_* processingData);
 extern DLL_DECL void    mcpp_set_out_func(
-                    int (* func_fputc)  ( int c, OUTDEST od),
-                    int (* func_fputs)  ( const char * s, OUTDEST od),
-                    int (* func_fprintf)( OUTDEST od, const char * format, ...)
+                    struct processing_data_* processingData,
+                    int (* func_fputc)  ( int c, OUTDEST od, struct processing_data_* processingData),
+                    int (* func_fputs)  ( const char * s, OUTDEST od, struct processing_data_* processingData),
+                    int (* func_fprintf)( OUTDEST od, struct processing_data_* processingData, const char * format, ...)
                     );
-extern DLL_DECL void    mcpp_use_mem_buffers( int tf);
-extern DLL_DECL char *  mcpp_get_mem_buffer( OUTDEST od);
+extern DLL_DECL void    mcpp_use_mem_buffers( int tf, struct processing_data_* processingData);
+extern DLL_DECL char *  mcpp_get_mem_buffer( OUTDEST od, struct processing_data_* processingData);
 #endif  /* _MCPP_LIB_H  */

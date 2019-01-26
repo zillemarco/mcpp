@@ -1478,10 +1478,10 @@ static void do_undef(processing_data_t* processingData)
 
 
 #if MCPP_LIB
-void init_directive(void)
+void init_directive(processing_data_t* processingData)
 /* Initialize static variables. */
 {
-    num_of_macro = 0;
+    processingData->num_of_macro = 0;
 }
 #endif
 
