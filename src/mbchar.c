@@ -329,7 +329,7 @@ static const char * const   encoding_name[ NUM_ENCODING][ NUM_ALIAS] = {
 
 static size_t   mb_read_2byte( int c1, char ** in_pp, char ** out_pp, processing_data_t* processingData);
                 /* For 2-byte encodings of mbchar   */
-static const char *     search_encoding( char * norm, int alias);
+static const char *     search_encoding( char * norm, int alias, processing_data_t* processingData);
                 /* Search encoding_name[][] table   */
 static void     strip_bar( char * string);
                 /* Remove '_', '-' or '.' in the string */
