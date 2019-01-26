@@ -865,7 +865,7 @@ extern void     do_old(processing_data_t* data);
                 /* Process older directives     */
 extern void     at_end(processing_data_t* data);
                 /* Do the final commands        */
-extern void     print_heap(processing_data_t* data);
+extern void     print_heap(void);
                 /* Print blocks of heap memory  */
 #if ! HOST_HAVE_STPCPY
 extern char *   stpcpy( char * dest, const char * src);

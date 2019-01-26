@@ -104,9 +104,9 @@
 #endif
 #endif
 
-static void     version( processing_data_t* processingData);
+static void     version(processing_data_t* processingData);
                 /* Print version message            */
-static void     usage(processing_data_t* processingData);
+static void     usage(int opt, processing_data_t* processingData);
                 /* Putout usage of MCPP             */
 static void     set_opt_list( char * optlist, processing_data_t* processingData);
                 /* Set list of legal option chars   */
@@ -166,7 +166,7 @@ static char *   md_quote( char * output, processing_data_t* processingData);
                 /* 'Quote' special characters       */
 static int      open_include( char * filename, int searchlocal, int next, processing_data_t* processingData);
                 /* Open the file to include         */
-static int      has_directory( const char * source, char * directory, processing_data_t* processingData);
+static int      has_directory( const char * source, char * directory);
                 /* Get directory part of fname      */
 static int      is_full_path( const char * path);
                 /* The path is absolute path list ? */
@@ -362,10 +362,10 @@ plus:
                 else if (mcpp_optarg[ 7] == EOS)        /* --sysroot DIR    */
                     sysroot = argv[ mcpp_optind++];
                 else
-                    usage( opt);
+                    usage( opt, processingData);
                 break;
             } else {
-                usage( opt);
+                usage( opt, processingData);
             }
 #endif
         case '2':                   /* Reverse digraphs recognition */
@@ -427,7 +427,7 @@ plus:
                 }   /* Else usage() */
 #endif
             }
-            usage( opt);
+            usage( opt, processingData);
 #elif   COMPILER == MSC
         case 'a':
             if (memcmp( mcpp_optarg, "rch", 3) == 0) {
@@ -439,7 +439,7 @@ plus:
                     sse = 2;
                 /* Else ignore  */
             } else {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;
 
@@ -465,7 +465,7 @@ plus:
 #if COMPILER == GNUC
         case 'c':
             if (! integrated_cpp)
-                usage( opt);
+                usage( opt, processingData);
             break;                  /* Else ignore this option      */
         case 'd':
             if (str_eq( mcpp_optarg, "M")) {                /* -dM          */
@@ -478,7 +478,7 @@ plus:
             } else if (str_eq( mcpp_optarg, "umpbase")) {   /* -dumpbase    */
                 ;                                           /* Ignore       */
             } else {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;
 #endif  /* COMPILER == GNUC */
@@ -501,13 +501,13 @@ plus:
 #if COMPILER == GNUC
         case 'E':
             if (! integrated_cpp)
-                usage( opt);
+                usage( opt, processingData);
             break;                          /* Ignore this option   */
         case 'f':
             if (memcmp( mcpp_optarg, "input-charset=", 14) == 0) {
                 /* Treat -finput-charset= as the same option as -e  */
                 if (set_encoding( mcpp_optarg + 14, FALSE, 0) == NULL)
-                    usage( opt);
+                    usage( opt, processingData);
                 mb_changed = TRUE;
             } else if (str_eq( mcpp_optarg, "working-directory")) {
                 gcc_work_dir = TRUE;
@@ -533,7 +533,7 @@ plus:
             } else if (str_eq( mcpp_optarg, "no-show-column")) {
                 ;                           /* Ignore this option   */
             } else if (! integrated_cpp) {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;
 
@@ -549,7 +549,7 @@ plus:
                 defp = look_id( debug_name);
                 strcpy( defp->repl, mcpp_optarg);
             } else {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;
 #elif COMPILER == MSC
@@ -578,7 +578,7 @@ plus:
                     processingData->mcpp_fprintf( ERR, processingData, warning, opt, mcpp_optarg);
                 }
             } else {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;
 #endif
@@ -630,7 +630,7 @@ plus:
                 }
                 *preinc_end++ = argv[ mcpp_optind++];
             } else {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;
 #endif
@@ -663,7 +663,7 @@ plus:
                 else if (mcpp_optarg[ 7] == EOS)        /* -isysroot DIR    */
                     sysroot = argv[ mcpp_optind++];
                 else
-                    usage( opt);
+                    usage( opt, processingData);
             } else if (str_eq( mcpp_optarg, "prefix")       /* -iprefix     */
                     || str_eq( mcpp_optarg, "withprefix")   /* -iwithprefix */
                     || str_eq( mcpp_optarg, "withprefixbefore")
@@ -673,7 +673,7 @@ plus:
                 mcpp_optind++;              /* Skip the argument    */
                 /* Ignore these options */
             } else {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;
 #endif
@@ -704,7 +704,7 @@ plus:
 #if COMPILER == GNUC
         case 'l':
             if (memcmp( mcpp_optarg, "ang-", 4) != 0) {
-                usage( opt);
+                usage( opt, processingData);
             } else if (str_eq( mcpp_optarg + 4, "c")) {     /* -lang-c  */
                 ;                           /* Ignore this option   */
             } else if (str_eq( mcpp_optarg + 4, "c99")      /* -lang-c99*/
@@ -724,7 +724,7 @@ plus:
             } else if (str_eq( mcpp_optarg + 4, "asm")) {   /* -lang-asm*/
                 option_flags.lang_asm = TRUE;
             } else {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;
 #endif  /* COMPILER == GNUC */
@@ -791,12 +791,12 @@ plus:
             }
 #endif
             if (! integrated_cpp)
-                usage( opt);
+                usage( opt, processingData);
             break;
 
         case 'u':
             if (! str_eq( mcpp_optarg, "ndef"))     /* -undef       */
-                usage( opt);                /* Else fall through    */
+                usage( opt, processingData);                /* Else fall through    */
 #endif  /* COMPILER == GNUC */
 
 #if COMPILER == MSC
@@ -825,7 +825,7 @@ plus:
             }
 #endif
             else {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;
 #endif
@@ -841,10 +841,10 @@ plus:
                     look_and_install( "__OPTIMIZE__", DEF_NOARGS_PREDEF, null
                             , "1");
                 else if (! isdigit( *mcpp_optarg))
-                    usage( opt);
+                    usage( opt, processingData);
                 /* Else -O0: ignore */
             } else {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;                  /* Else ignore -Ox option       */
 #elif COMPILER == LCC
@@ -876,7 +876,7 @@ plus:
                     sflag = TRUE;
                 }
             } else {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;
         case 'q':
@@ -884,7 +884,7 @@ plus:
                 /* -quiet: GCC's undocumented, yet frequently specified opt */
                 break;                      /* Ignore the option    */
             else
-                usage( opt);
+                usage( opt, processingData);
             break;
 #endif  /* COMPILER == GNUC */
 
@@ -899,7 +899,7 @@ plus:
                 look_and_install( "__MSVC_RUNTIME_CHECKS", DEF_NOARGS_PREDEF
                         , null, "1");
             else
-                usage( opt);
+                usage( opt, processingData);
             break;
 #endif
 
@@ -921,7 +921,7 @@ plus:
                 processingData->mcpp_fprintf( ERR, processingData, warning, opt, mcpp_optarg);
                                             /* Ignore -remap option */
             else
-                usage( opt);
+                usage( opt, processingData);
             break;
 
         case 's':
@@ -961,7 +961,7 @@ plus:
                         goto plus;
                     }
                 } else {
-                    usage( opt);
+                    usage( opt, processingData);
                 }
                 if (! cplus_val && memcmp( cp, "gnu", 3) != 0) {
                     /* 'std=gnu*' does not imply -ansi  */
@@ -972,7 +972,7 @@ plus:
                 stdc_val = 1;
                 sflag = TRUE;
             } else {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;
 
@@ -985,7 +985,7 @@ plus:
             } else if (str_eq( mcpp_optarg, "rigraphs")) {
                 option_flags.trig = TRUE;           /* -trigraphs   */
             } else {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;
 #endif  /* COMPILER == GNUC */
@@ -993,14 +993,14 @@ plus:
 #if COMPILER == MSC
         case 'T':
             if (strlen( mcpp_optarg) > 1)
-                usage( opt);
+                usage( opt, processingData);
             i = tolower( *mcpp_optarg);             /* Fold case    */
             if (i == 'c') {
                 ;                           /* Ignore this option   */
             } else if (i == 'p') {
                 cplus_val = CPLUS;
             } else {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;
 #endif
@@ -1085,7 +1085,7 @@ Version:
                 option_flags.lang_asm = TRUE;
                 break;
             } else {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;
 #endif
@@ -1114,7 +1114,7 @@ Version:
                 processingData->mcpp_fprintf( ERR, processingData, warning, opt, mcpp_optarg);
                 /* Ignore the option with warning   */
             } else {
-                usage( opt);
+                usage( opt, processingData);
             }
             break;
 #endif

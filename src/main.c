@@ -518,7 +518,7 @@ fatal_error_exit:
         fclose(processingData->fp_err);
 
     if (processingData->mcpp_debug & MEMORY)
-        print_heap(processingData);
+        print_heap();
 
     if (processingData->errors > 0 && processingData->option_flags.no_source_line == FALSE)
     {
