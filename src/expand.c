@@ -206,7 +206,7 @@ static int disable_repl(const DEFBUF *defp, processing_data_t* processingData);
 /* Disable the macro once replaced  */
 static void enable_repl(const DEFBUF *defp, int done, processing_data_t* processingData);
 /* Enable the macro for later use   */
-static int is_able_repl(const DEFBUF *defp);
+static int is_able_repl(const DEFBUF *defp, processing_data_t* processingData);
 /* Is the macro allowed to replace? */
 static char *insert_to_bptr(char *ins, size_t len, processing_data_t* processingData);
 /* Insert a sequence into infile->bptr  */
