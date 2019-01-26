@@ -77,61 +77,34 @@
 #include    "internal.H"
 #endif
 
-static void     scan_id( int c);
+static void     scan_id( int c, processing_data_t* processingData);
                 /* Scan an identifier           */
-static char *   scan_number( int c, char * out, char * out_end);
+static char *   scan_number( int c, char * out, char * out_end, processing_data_t* processingData);
                 /* Scan a preprocessing number  */
-static char *   scan_number_prestd( int c, char * out, char * out_end);
+static char *   scan_number_prestd( int c, char * out, char * out_end, processing_data_t* processingData);
                 /* scan_number() for pre-Standard mode  */
 #if OK_UCN
-static char *   scan_ucn( int cnt, char * out);
+static char *   scan_ucn( int cnt, char * out, processing_data_t* processingData);
                 /* Scan an UCN sequence         */
 #endif
-static char *   scan_op( int c, char * out);
+static char *   scan_op( int c, char * out, processing_data_t* processingData);
                 /* Scan an operator or a punctuator     */
-static char *   parse_line( void);
+static char *   parse_line(processing_data_t* processingData);
                 /* Parse a logical line and convert comments    */
-static char *   read_a_comment( char * sp, size_t * sizp);
+static char *   read_a_comment( char * sp, size_t * sizp, processing_data_t* processingData);
                 /* Read over a comment          */
-static char *   get_line( int in_comment);
+static char *   get_line( int in_comment, processing_data_t* processingData);
                 /* Get a logical line from file, handle line-splicing   */
-static char *   at_eof( int in_comment);
+static char *   at_eof( int in_comment, processing_data_t* processingData);
                 /* Check erroneous end of file  */
-static void     do_msg( const char * severity, const char * format
-        , const char * arg1, long arg2, const char * arg3);
+static void     do_msg( const char * severity, const char * format, const char * arg1, long arg2, const char * arg3, processing_data_t* processingData);
                 /* Putout diagnostic message    */
-static char *   cat_line( int del_bsl);
+static char *   cat_line( int del_bsl, processing_data_t* processingData);
                 /* Splice the line              */
-static void     put_line( char * out, FILE * fp);
+static void     put_line( char * out, FILE * fp, processing_data_t* processingData);
                 /* Put out a logical line       */
-static void     dump_token( int token_type, const char * cp);
+static void     dump_token( int token_type, const char * cp, processing_data_t* processingData);
                 /* Dump a token and its type    */
-
-#define EXP_MAC_IND_MAX     16
-/* Information of current expanding macros for diagnostic   */
-static struct {
-    const char *    name;       /* Name of the macro just expanded  */
-    int             to_be_freed;    /* Name should be freed later   */
-} expanding_macro[ EXP_MAC_IND_MAX];
-static int  exp_mac_ind = 0;        /* Index into expanding_macro[] */
-
-static int  in_token = FALSE;       /* For token scanning functions */
-static int  in_string = FALSE;      /* For get_ch() and parse_line()*/
-static int  squeezews = FALSE;
-
-#define MAX_CAT_LINE    256
-/* Information on line catenated by <backslash><newline>    */
-/* and by line-crossing comment.  This is for -K option.    */
-typedef struct catenated_line {
-    long    start_line;         /* Starting line of catenation      */
-    long    last_line;          /* Ending line of catanation        */
-    size_t  len[ MAX_CAT_LINE + 1];
-                        /* Length of successively catenated lines   */
-} CAT_LINE;
-static CAT_LINE bsl_cat_line;
-        /* Datum on the last catenated line by <backslash><newline> */
-static CAT_LINE com_cat_line;
-        /* Datum on the last catenated line by a line-crossing comment  */
 
 #if MCPP_LIB
 static int  use_mem_buffers = FALSE;
@@ -249,10 +222,10 @@ char *  mcpp_get_mem_buffer(
 
 #endif  /* MCPP_LIB */
 
-#define DEST2FP(od) \
-    (od == OUT) ? fp_out : \
-    ((od == ERR) ? fp_err : \
-    ((od == DBG) ? fp_debug : \
+#define DEST2FP(od, pd) \
+    (od == OUT) ? pd->fp_out : \
+    ((od == ERR) ? pd->fp_err : \
+    ((od == DBG) ? pd->fp_debug : \
     (NULL)))
 
 /*
@@ -265,7 +238,8 @@ char *  mcpp_get_mem_buffer(
 
 int    mcpp_lib_fputc(
     int     c,
-    OUTDEST od
+    OUTDEST od,
+    processing_data_t* processingData
 )
 {
 #if MCPP_LIB
@@ -273,7 +247,7 @@ int    mcpp_lib_fputc(
         return mem_putc( c, od);
     } else {
 #endif
-        FILE *  stream = DEST2FP( od);
+        FILE *  stream = DEST2FP(od, processingData);
 
         return (stream != NULL) ? fputc( c, stream) : EOF;
 #if MCPP_LIB
@@ -281,11 +255,10 @@ int    mcpp_lib_fputc(
 #endif
 }
 
-int (* mcpp_fputc)( int c, OUTDEST od) = mcpp_lib_fputc;
-
 int    mcpp_lib_fputs(
     const char *    s,
-    OUTDEST od
+    OUTDEST od,
+    processing_data_t* processingData
 )
 {
 #if MCPP_LIB
@@ -293,7 +266,7 @@ int    mcpp_lib_fputs(
         return mem_puts( s, od);
     } else {
 #endif
-        FILE *  stream = DEST2FP( od);
+        FILE *  stream = DEST2FP(od, processingData);
 
         return (stream != NULL) ? fputs( s, stream) : EOF;
 #if MCPP_LIB
@@ -301,18 +274,17 @@ int    mcpp_lib_fputs(
 #endif
 }
 
-int (* mcpp_fputs)( const char * s, OUTDEST od) = mcpp_lib_fputs;
-
 #include <stdarg.h>
 
 int    mcpp_lib_fprintf(
     OUTDEST od,
+    processing_data_t* processingData,
     const char *    format,
     ...
 )
 {
     va_list ap;
-    FILE *  stream = DEST2FP( od);
+    FILE *  stream = DEST2FP(od, processingData);
 
     if (stream != NULL) {
         int rc;
@@ -342,14 +314,24 @@ int    mcpp_lib_fprintf(
     }
 }
 
-int (* mcpp_fprintf)( OUTDEST od, const char * format, ...) = mcpp_lib_fprintf;
+void mcpp_init_def_out_func(processing_data_t* processingData)
+{
+    if(processingData->mcpp_fprintf == NULL)
+        processingData->mcpp_fprintf = mcpp_lib_fprintf;
+
+    if(processingData->mcpp_fputs == NULL)
+        processingData->mcpp_fputs = mcpp_lib_fputs;
+
+    if(processingData->mcpp_fputc == NULL)
+        processingData->mcpp_fputc = mcpp_lib_fputc;
+}
 
 #if MCPP_LIB
 void    mcpp_reset_def_out_func( void)
 {
-    mcpp_fputc = mcpp_lib_fputc;
-    mcpp_fputs = mcpp_lib_fputs;
-    mcpp_fprintf = mcpp_lib_fprintf;
+    processingData->mcpp_fputc = mcpp_lib_fputc;
+    processingData->mcpp_fputs = mcpp_lib_fputs;
+    processingData->mcpp_fprintf = mcpp_lib_fprintf;
 }
 
 void    mcpp_set_out_func(
@@ -358,15 +340,16 @@ void    mcpp_set_out_func(
     int (* func_fprintf)( OUTDEST od, const char * format, ...)
 )
 {
-    mcpp_fputc = func_fputc;
-    mcpp_fputs = func_fputs;
-    mcpp_fprintf = func_fprintf;
+    processingData->mcpp_fputc = func_fputc;
+    processingData->mcpp_fputs = func_fputs;
+    processingData->mcpp_fprintf = func_fprintf;
 }
 #endif
 
 int     get_unexpandable(
     int     c,                              /* First char of token  */
-    int     diag                            /* Flag of diagnosis    */
+    int     diag,                           /* Flag of diagnosis    */
+    processing_data_t* processingData
 )
 /*
  * Get the next unexpandable token in the line, expanding macros.
@@ -384,85 +367,85 @@ int     get_unexpandable(
     int     has_pragma;
 
     while (c != EOS && c != '\n'                /* In a line        */
-            && (mf = infile->mf         /* Preserve current state   */				// Anima ADD
+            && (mf = processingData->infile->mf         /* Preserve current state   */				// Anima ADD
                 , (token_type
-                    = scan_token( c, (workp = work_buf, &workp), work_end))
+                    = scan_token( c, (processingData->workp = processingData->work_buf, &processingData->workp), processingData->work_end, processingData))
                     == NAM)                     /* Identifier       */
             && mf != NULL                       /* In source !      */				// Anima ADD
-            && (defp = is_macro( NULL)) != NULL) {      /* Macro    */
-        expand_macro( defp, work_buf, work_end, line_col, & has_pragma);
+            && (defp = is_macro( NULL, processingData)) != NULL) {      /* Macro    */
+        processingData->expand_macro( defp, processingData->work_buf, processingData->work_end, line_col, & has_pragma);
                                                 /* Expand macro     */
         if (has_pragma)
             cerror( "_Pragma operator found in directive line"      /* _E_  */
-                    , NULL, 0L, NULL);
-        file = unget_string( work_buf, defp->name);     /* Stack to re-read */
-        c = skip_ws();                          /* Skip TOK_SEP     */
-        if (file != infile && macro_line != MACRO_ERROR && (warn_level & 1)) {
+                    , NULL, 0L, NULL, processingData);
+        file = unget_string( processingData->work_buf, defp->name, processingData);     /* Stack to re-read */
+        c = skip_ws(processingData);                          /* Skip TOK_SEP     */
+        if (file != processingData->infile && processingData->macro_line != MACRO_ERROR && (processingData->warn_level & 1)) {
             /* This diagnostic is issued even if "diag" is FALSE.   */
             cwarn( "Macro \"%s\" is expanded to 0 token"    /* _W1_ */
-                    , defp->name, 0L, NULL);
-            if (! option_flags.no_source_line)
-                dump_a_def( "    macro", defp, FALSE, TRUE, fp_err);
+                    , defp->name, 0L, NULL, processingData);
+            if (! processingData->option_flags.no_source_line)
+                dump_a_def( "    macro", defp, FALSE, TRUE, processingData->fp_err, processingData);
         }
     }
 
     if (c == '\n' || c == EOS) {
-        unget_ch();
+        unget_ch(processingData);
         return  NO_TOKEN;
     }
 
-    if (diag && mf == NULL && defp && (warn_level & 1)) {							// Anima ADD
+    if (diag && mf == NULL && defp && (processingData->warn_level & 1)) {							// Anima ADD
         char    tmp[ NWORK + 16];
         char *  tmp_end = tmp + NWORK;
         char *  tmp_p;
-        file = unget_string( infile->buffer, defp->name);   /* To diagnose  */
-        c = get_ch();
-        while (file == infile) {    /* Search the expanded macro    */
-            if (scan_token( c, (tmp_p = tmp, &tmp_p), tmp_end) != NAM) {
-                c = get_ch();
+        file = unget_string( processingData->infile->buffer, defp->name, processingData);   /* To diagnose  */
+        c = get_ch(processingData);
+        while (file == processingData->infile) {    /* Search the expanded macro    */
+            if (scan_token( c, (tmp_p = tmp, &tmp_p), tmp_end, processingData) != NAM) {
+                c = get_ch(processingData);
                 continue;
             }
-            if (standard && str_eq( identifier, "defined")) {
+            if (processingData->standard && str_eq( processingData->identifier, "defined")) {
                 cwarn( "Macro \"%s\" is expanded to \"defined\""    /* _W1_ */
-                        , defp->name, 0L, NULL);
+                        , defp->name, 0L, NULL, processingData);
                 break;
             }
-            if (! standard && str_eq( identifier, "sizeof")) {
+            if (! processingData->standard && str_eq( processingData->identifier, "sizeof")) {
                 cwarn( "Macro \"%s\" is expanded to \"sizeof\""     /* _W1_ */
-                        , defp->name, 0L, NULL);
+                        , defp->name, 0L, NULL, processingData);
                 break;
             }
-            c = get_ch();
+            c = get_ch(processingData);
         }
-        if (file == infile) {
-            infile->bptr += strlen( infile->bptr);
-            get_ch();
+        if (file == processingData->infile) {
+            processingData->infile->bptr += strlen( processingData->infile->bptr);
+            get_ch(processingData);
         }
-        unget_ch();
+        unget_ch(processingData);
         if (token_type == OPE) {
-            unget_string( work_buf, NULL);  /* Set again 'openum'   */
-            scan_token( get_ch(), (workp = work_buf, &workp), work_end);
+            unget_string( processingData->work_buf, NULL, processingData);  /* Set again 'openum'   */
+            scan_token( get_ch(processingData), (processingData->workp = processingData->work_buf, &processingData->workp), processingData->work_end, processingData);
         }
     }
 
     return  token_type;
 }
 
-void    skip_nl( void)
+void    skip_nl(processing_data_t* processingData)
 /*
  * Skip to the end of the current input line.
  */
 {
-    insert_sep = NO_SEP;
-    while (infile && infile->mf == NULL) {  /* Stacked text         */				// Anima ADD
-        infile->bptr += strlen( infile->bptr);
-        get_ch();                           /* To the parent        */
+    processingData->insert_sep = NO_SEP;
+    while (processingData->infile && processingData->infile->mf == NULL) {  /* Stacked text         */				// Anima ADD
+        processingData->infile->bptr += strlen( processingData->infile->bptr);
+        get_ch(processingData);                           /* To the parent        */
     }
-    if (infile)
-        infile->bptr += strlen( infile->bptr);  /* Source line      */
+    if (processingData->infile)
+        processingData->infile->bptr += strlen( processingData->infile->bptr);  /* Source line      */
 }
 
-int     skip_ws( void)
+int     skip_ws(processing_data_t* processingData)
 /*
  * Skip over horizontal whitespaces.
  */
@@ -470,8 +453,8 @@ int     skip_ws( void)
     int     c;
 
     do {
-        c = get_ch();
-    } while (char_type[ c] & HSP);
+        c = get_ch(processingData);
+    } while (processingData->char_type[ c] & HSP);
 
     return  c;
 }
@@ -481,7 +464,8 @@ int     skip_ws( void)
 int     scan_token(
     int     c,                  /* The first character of the token */
     char ** out_pp,             /* Pointer to pointer to output buf */
-    char *  out_end             /* End of output buffer             */
+    char *  out_end,            /* End of output buffer             */
+    processing_data_t* processingData
 )
 /*
  *   Scan the next token of any type.
@@ -501,19 +485,19 @@ int     scan_token(
     int     token_type = 0;             /* Type of token            */
     int     ch;
 
-    if (standard)
-        in_token = TRUE;                /* While a token is scanned */
+    if (processingData->standard)
+        processingData->supportProcessingData.in_token = TRUE;                /* While a token is scanned */
     c = c & UCHARMAX;
-    ch_type = char_type[ c] & MBMASK;
+    ch_type = processingData->char_type[ c] & MBMASK;
 
     switch (ch_type) {
     case LET:                           /* Probably an identifier   */
         switch (c) {
         case 'L':
-            if (! standard)
+            if (! processingData->standard)
                 goto  ident;
-            ch = get_ch();
-            if (char_type[ ch] & QUO) { /* char_type[ ch] == QUO    */
+            ch = get_ch(processingData);
+            if (processingData->char_type[ ch] & QUO) { /* char_type[ ch] == QUO    */
                 if (ch == '"')
                     token_type = WSTR;  /* Wide-char string literal */
                 else
@@ -522,12 +506,12 @@ int     scan_token(
                 *out++ = 'L';
                 break;                  /* Fall down to "case QUO:" */
             } else {
-                unget_ch();
+                unget_ch(processingData);
             }                           /* Fall through             */
         default:                        /* An identifier            */
 ident:
-            scan_id( c);
-            out = stpcpy( out, identifier);
+            scan_id( c, processingData);
+            out = stpcpy( out, processingData->identifier);
             token_type = NAM;
             break;
         }
@@ -535,7 +519,7 @@ ident:
             break;
         /* Else fall through    -- i.e. WSTR, WCHR  */
     case QUO:                   /* String or character constant     */
-        out = scan_quote( c, out, out_end, FALSE);
+        out = scan_quote( c, out, out_end, FALSE, processingData);
         if (token_type == 0) {                  /* Without prefix L */
             if (c == '"')
                 token_type = STR;
@@ -544,25 +528,25 @@ ident:
         }   /* Else WSTR or WCHR    */
         break;
     case DOT:
-        ch = get_ch();
-        unget_ch();
-        if ((char_type[ ch] & DIG) == 0)        /* Operator '.' or '...'    */
+        ch = get_ch(processingData);
+        unget_ch(processingData);
+        if ((processingData->char_type[ ch] & DIG) == 0)        /* Operator '.' or '...'    */
             goto  operat;
         /* Else fall through    */
     case DIG:                           /* Preprocessing number     */
-        out = (standard ? scan_number( c, out, out_end)
-                : scan_number_prestd( c, out, out_end));
+        out = (processingData->standard ? scan_number( c, out, out_end, processingData)
+                : scan_number_prestd( c, out, out_end, processingData));
         token_type = NUM;
         break;
     case PUNC:
-operat: out = scan_op( c, out);         /* Operator or punctuator   */
+operat: out = scan_op( c, out, processingData);         /* Operator or punctuator   */
         token_type = OPE;       /* Number is set in global "openum" */
         break;
     default:                /* Special tokens or special characters */
 #if OK_UCN
-        if (mcpp_mode == STD && c == '\\' && stdc2) {
-            ch = get_ch();
-            unget_ch();
+        if (processingData->mcpp_mode == STD && c == '\\' && processingData->stdc2) {
+            ch = get_ch(processingData);
+            unget_ch(processingData);
             if (ch == 'U' || ch == 'u')
                 goto  ident;            /* Universal-Characte-Name  */
         }
@@ -570,14 +554,14 @@ operat: out = scan_op( c, out);         /* Operator or punctuator   */
 #if OK_MBIDENT
         if (mcpp_mode == STD && (char_type[ c] & mbchk) && stdc3) {
             char *  bptr = infile->bptr;
-            mb_read( c, &infile->bptr, &out);
+            processingData->mb_read( c, &infile->bptr, &out);
             infile->bptr = bptr;
             out = *out_pp;
             goto  ident;        /* An identifier with multi-byte characters */
             /* Mbchar cheking has been done in scan_quote() and others. */
         }
 #endif
-        if ((standard && (c == CAT || c == ST_QUOTE)) || (char_type[ c] & SPA))
+        if ((processingData->standard && (c == CAT || c == ST_QUOTE)) || (processingData->char_type[ c] & SPA))
             token_type = SEP;       /* Token separator or magic char*/
         else
             token_type = SPE;
@@ -589,28 +573,28 @@ operat: out = scan_op( c, out);         /* Operator or punctuator   */
 
     if (out_end < out)
         cfatal( "Buffer overflow scanning token \"%s\""     /* _F_  */
-                , *out_pp, 0L, NULL);
-    if (mcpp_debug & TOKEN)
-        dump_token( token_type, *out_pp);
-    if (mcpp_mode == POST_STD && token_type != SEP && infile->mf != NULL			// Anima ADD
-            && (char_type[ *infile->bptr & UCHARMAX] & SPA) == 0)
-        insert_sep = INSERT_SEP;    /* Insert token separator       */
+                , *out_pp, 0L, NULL, processingData);
+    if (processingData->mcpp_debug & TOKEN)
+        dump_token( token_type, *out_pp, processingData);
+    if (processingData->mcpp_mode == POST_STD && token_type != SEP && processingData->infile->mf != NULL			// Anima ADD
+            && (processingData->char_type[ *processingData->infile->bptr & UCHARMAX] & SPA) == 0)
+        processingData->insert_sep = INSERT_SEP;    /* Insert token separator       */
     *out_pp = out;
 
-    in_token = FALSE;               /* Token scanning has been done */
+    processingData->supportProcessingData.in_token = FALSE;               /* Token scanning has been done */
     return  token_type;
 }
 
 static void scan_id(
-    int     c                               /* First char of id     */
+    int     c, /* First char of id     */
+    processing_data_t* processingData
 )
 /*
  * Reads the next identifier and put it into identifier[].
  * The caller has already read the first character of the identifier.
  */
 {
-    static char * const     limit = &identifier[ IDMAX];
-    static int      dollar_diagnosed = FALSE;   /* Flag of diagnosing '$'   */
+    char * const     limit = &processingData->identifier[ IDMAX];
 #if OK_UCN
     int     uc2 = 0, uc4 = 0;           /* Count of UCN16, UCN32    */
 #endif
@@ -618,36 +602,36 @@ static void scan_id(
     int     mb = 0;                     /* Count of MBCHAR  */
 #endif
     size_t  len;                        /* Length of identifier     */
-    char *  bp = identifier;
+    char *  bp = processingData->identifier;
 
     if (c == IN_SRC) {                  /* Magic character  */
         *bp++ = c;
-        if ((mcpp_debug & MACRO_CALL) && ! in_directive) {
-            *bp++ = get_ch();           /* Its 2-bytes      */
-            *bp++ = get_ch();           /*      argument    */
+        if ((processingData->mcpp_debug & MACRO_CALL) && ! processingData->in_directive) {
+            *bp++ = get_ch(processingData);           /* Its 2-bytes      */
+            *bp++ = get_ch(processingData);           /*      argument    */
         }
-        c = get_ch();
+        c = get_ch(processingData);
     }
 
     do {
         if (bp < limit)
             *bp++ = c;
 #if OK_UCN
-        if (mcpp_mode == STD && c == '\\' && stdc2) {
+        if (processingData->mcpp_mode == STD && c == '\\' && processingData->stdc2) {
             int     cnt;
             char *  tp = bp;
             
-            if ((c = get_ch()) == 'u') {
+            if ((c = get_ch(processingData)) == 'u') {
                 cnt = 4;
             } else if (c == 'U') {
                 cnt = 8;
             } else {
-                unget_ch();
+                unget_ch(processingData);
                 bp--;
                 break;
             }
             *bp++ = c;
-            if ((bp = scan_ucn( cnt, bp)) == NULL)      /* Error    */
+            if ((bp = scan_ucn( cnt, bp, processingData)) == NULL)      /* Error    */
                 return;
             if (cnt == 4)
                 uc2++;
@@ -660,7 +644,7 @@ static void scan_id(
 #endif  /* OK_UCN   */
 #if OK_MBIDENT
         if (mcpp_mode == STD && (char_type[ c] & mbchk) && stdc3) {
-            len = mb_read( c, &infile->bptr, &bp);
+            len = processingData->mb_read( c, &infile->bptr, &bp);
             if (len & MB_ERROR) {
                 if (infile->mf)													// Anima ADD
                     cerror(
@@ -674,43 +658,43 @@ static void scan_id(
 #if OK_UCN
 next_c:
 #endif
-        c = get_ch();
-    } while ((char_type[ c] & (LET | DIG))      /* Letter or digit  */
+        c = get_ch(processingData);
+    } while ((processingData->char_type[ c] & (LET | DIG))      /* Letter or digit  */
 #if OK_UCN
-            || (mcpp_mode == STD && c == '\\' && stdc2)
+            || (processingData->mcpp_mode == STD && c == '\\' && processingData->stdc2)
 #endif
 #if OK_MBIDENT
             || (mcpp_mode == STD && (char_type[ c] & mbchk) && stdc3)
 #endif
         );
 
-    unget_ch();
+    unget_ch(processingData);
     *bp = EOS;
 
-    if (bp >= limit && (warn_level & 1))        /* Limit of token   */
+    if (bp >= limit && (processingData->warn_level & 1))        /* Limit of token   */
         cwarn( "Too long identifier truncated to \"%s\""    /* _W1_ */
-                , identifier, 0L, NULL);
+                , processingData->identifier, 0L, NULL, processingData);
 
-    len = bp - identifier;
+    len = bp - processingData->identifier;
 #if IDMAX > IDLEN90MIN
     /* UCN16, UCN32, MBCHAR are counted as one character for each.  */
 #if OK_UCN
-    if (mcpp_mode == STD)
+    if (processingData->mcpp_mode == STD)
         len -= (uc2 * 5) - (uc4 * 9);
 #endif
 #if OK_MBIDENT
     if (mcpp_mode == STD)
         len -= mb;
 #endif
-    if (standard && infile->mf && len > std_limits.id_len && (warn_level & 4))		// Anima ADD
+    if (processingData->standard && processingData->infile->mf && len > processingData->std_limits.id_len && (processingData->warn_level & 4))		// Anima ADD
         cwarn( "Identifier longer than %.0s%ld characters \"%s\""   /* _W4_ */
-                , NULL, (long) std_limits.id_len, identifier);
+                , NULL, (long) processingData->std_limits.id_len, processingData->identifier, processingData);
 #endif  /* IDMAX > IDLEN90MIN   */
 
-    if (option_flags.dollar_in_name && dollar_diagnosed == FALSE
-            && (warn_level & 2) && strchr( identifier, '$') != NULL) {
-        cwarn( "'$' in identifier \"%s\"", identifier, 0L, NULL); /* _W2_ */
-        dollar_diagnosed = TRUE;            /* Diagnose only once   */
+    if (processingData->option_flags.dollar_in_name && processingData->supportProcessingData.dollar_diagnosed == FALSE
+            && (processingData->warn_level & 2) && strchr( processingData->identifier, '$') != NULL) {
+        cwarn( "'$' in identifier \"%s\"", processingData->identifier, 0L, NULL, processingData); /* _W2_ */
+        processingData->supportProcessingData.dollar_diagnosed = TRUE;            /* Diagnose only once   */
     }
 }
 
@@ -718,7 +702,8 @@ char *  scan_quote(
     int         delim,              /* ', " or < (header-name)      */
     char *      out,                /* Output buffer                */
     char *      out_end,            /* End of output buffer         */
-    int         diag                /* Diagnostic should be output  */
+    int         diag,               /* Diagnostic should be output  */
+    processing_data_t* processingData
 )
 /*
  * Scan off a string literal or character constant to the output buffer.
@@ -740,31 +725,31 @@ char *  scan_quote(
     char *      out_p = out;
 
     /* Set again in case of called from routines other than scan_token().   */
-    if (standard)
-        in_token = TRUE;
+    if (processingData->standard)
+        processingData->supportProcessingData.in_token = TRUE;
     *out_p++ = delim;
     if (delim == '<')
         delim = '>';
 
 scan:
-    while ((c = get_ch()) != EOS) {
+    while ((c = get_ch(processingData)) != EOS) {
 
 #if MBCHAR
-        if (char_type[ c] & mbchk) {
+        if (processingData->char_type[ c] & processingData->mbchk) {
             /* First of multi-byte character (or shift-sequence)    */
-            char *  bptr = infile->bptr;
-            len = mb_read( c, &infile->bptr, (*out_p++ = c, &out_p));
+            char *  bptr = processingData->infile->bptr;
+            len = processingData->mb_read( c, &processingData->infile->bptr, (*out_p++ = c, &out_p), processingData);
             if (len & MB_ERROR) {
-                if (infile->mf != NULL && compiling && diag) {				// Anima ADD
-                    if (warn_level & 1) {
+                if (processingData->infile->mf != NULL && processingData->compiling && diag) {				// Anima ADD
+                    if (processingData->warn_level & 1) {
                         char *  buf;
                         size_t  chlen;
-                        buf = xmalloc( chlen = infile->bptr - bptr + 2);
+                        buf = xmalloc( chlen = processingData->infile->bptr - bptr + 2);
                         memcpy( buf, bptr, chlen - 1);
                         buf[ chlen - 1] = EOS;
                         cwarn(
     "Illegal multi-byte character sequence \"%s\" in quotation",    /* _W1_ */
-                        buf, 0L, NULL);
+                        buf, 0L, NULL, processingData);
                         free( buf);
                     }
                 }
@@ -778,12 +763,12 @@ scan:
             break;
         } else if (c == '\\' && delim != '>') { /* In string literal    */
 #if OK_UCN
-            if (mcpp_mode == STD && stdc2) {
+            if (processingData->mcpp_mode == STD && processingData->stdc2) {
                 int         cnt;
                 char *      tp;
 
                 *out_p++ = c;
-                if ((c = get_ch()) == 'u') {
+                if ((c = get_ch(processingData)) == 'u') {
                     cnt = 4;
                 } else if (c == 'U') {
                     cnt = 8;
@@ -791,115 +776,116 @@ scan:
                     goto  escape;
                 }
                 *out_p++ = c;
-                if ((tp = scan_ucn( cnt, out_p)) != NULL)
+                if ((tp = scan_ucn( cnt, out_p, processingData)) != NULL)
                     out_p = tp;
                 /* Else error   */
                 continue;       /* Error or not, anyway continue    */
             }
 #endif  /* OK_UCN   */
             *out_p++ = c;                   /* Escape sequence      */
-            c = get_ch();
+            c = get_ch(processingData);
 escape:
 #if MBCHAR
-            if (char_type[ c] & mbchk) {
+            if (processingData->char_type[ c] & processingData->mbchk) {
                                 /* '\\' followed by multi-byte char */
-                unget_ch();
+                unget_ch(processingData);
                 continue;
             }
 #endif
-            if (! standard && c == '\n') {  /* <backslash><newline> */
+            if (! processingData->standard && c == '\n') {  /* <backslash><newline> */
                 out_p--;                    /* Splice the lines     */
-                if (cat_line( TRUE) == NULL)        /* End of file  */
+                if (cat_line( TRUE, processingData) == NULL)        /* End of file  */
                     break;
-                c = get_ch();
+                c = get_ch(processingData);
             }
-        } else if (mcpp_mode == POST_STD && c == ' ' && delim == '>'
-                && infile->mf == NULL) {											// Anima ADD
+        } else if (processingData->mcpp_mode == POST_STD && c == ' ' && delim == '>'
+                && processingData->infile->mf == NULL) {											// Anima ADD
             continue;   /* Skip space possibly inserted by macro expansion  */
         } else if (c == '\n') {
             break;
         }
-        if (diag && iscntrl( c) && ((char_type[ c] & SPA) == 0)
-                && (warn_level & 1))
+        if (diag && iscntrl( c) && ((processingData->char_type[ c] & SPA) == 0)
+                && (processingData->warn_level & 1))
             cwarn(
             "Illegal control character %.0s0lx%02x in quotation"    /* _W1_ */
-                    , NULL, (long) c, NULL);
+                    , NULL, (long) c, NULL, processingData);
         *out_p++ = c;
 chk_limit:
         if (out_end < out_p) {
             *out_end = EOS;
-            cfatal( "Too long quotation", NULL, 0L, NULL);  /* _F_  */
+            cfatal( "Too long quotation", NULL, 0L, NULL, processingData);  /* _F_  */
         }
     }
 
     if (c == '\n' || c == EOS)
-        unget_ch();
+        unget_ch(processingData);
     if (c == delim)
         *out_p++ = delim;
     *out_p = EOS;
     if (diag) {                         /* At translation phase 3   */
-        skip = (infile->mf == NULL) ? NULL : skip_line;								// Anima ADD
+        skip = (processingData->infile->mf == NULL) ? NULL : skip_line;								// Anima ADD
         if (c != delim) {
-            if (mcpp_mode == OLD_PREP   /* Implicit closing of quote*/
+            if (processingData->mcpp_mode == OLD_PREP   /* Implicit closing of quote*/
                     && (delim == '"' || delim == '\''))
                 goto  done;
             if (delim == '"') {
-                if (mcpp_mode != POST_STD && option_flags.lang_asm) {
+                if (processingData->mcpp_mode != POST_STD && processingData->option_flags.lang_asm) {
                     /* STD, KR      */
                     /* Concatenate the unterminated string to the next line */
-                    if (warn_level & 1)
+                    if (processingData->warn_level & 1)
                         cwarn( unterm_string
                                 , ", catenated to the next line"    /* _W1_ */
-                                , 0L, NULL);
-                    if (cat_line( FALSE) != NULL)
+                                , 0L, NULL, processingData);
+                    if (cat_line( FALSE, processingData) != NULL)
                         goto  scan;         /* Splice the lines     */
                     /* Else end of file     */
                 } else {
-                    cerror( unterm_string, skip, 0L, NULL); /* _E_  */
+                    cerror( unterm_string, skip, 0L, NULL, processingData); /* _E_  */
                 }
             } else if (delim == '\'') {
-                if (mcpp_mode != POST_STD && option_flags.lang_asm) {
+                if (processingData->mcpp_mode != POST_STD && processingData->option_flags.lang_asm) {
                     /* STD, KR      */
-                    if (warn_level & 1)
-                        cwarn( unterm_char, out, 0L, NULL); /* _W1_ */
+                    if (processingData->warn_level & 1)
+                        cwarn( unterm_char, out, 0L, NULL, processingData); /* _W1_ */
                     goto  done;
                 } else {
-                    cerror( unterm_char, out, 0L, skip);    /* _E_  */
+                    cerror( unterm_char, out, 0L, skip, processingData);    /* _E_  */
                 }
             } else {
                 cerror( "Unterminated header name %s%.0ld%s"        /* _E_  */
-                        , out, 0L, skip);
+                        , out, 0L, skip, processingData);
             }
             out_p = NULL;
         } else if (delim == '\'' && out_p - out <= 2) {
-            if (mcpp_mode != POST_STD && option_flags.lang_asm) {
+            if (processingData->mcpp_mode != POST_STD && processingData->option_flags.lang_asm) {
                 /* STD, KR      */
-                if (warn_level & 1)
-                    cwarn( empty_const, out, 0L, skip);     /* _W1_ */
+                if (processingData->warn_level & 1)
+                    cwarn( empty_const, out, 0L, skip, processingData);     /* _W1_ */
             } else {
-                cerror( empty_const, out, 0L, skip);        /* _E_  */
+                cerror( empty_const, out, 0L, skip, processingData);        /* _E_  */
                 out_p = NULL;
                 goto  done;
             }
-        } else if (mcpp_mode == POST_STD && delim == '>' && (warn_level & 2)) {
+        } else if (processingData->mcpp_mode == POST_STD && delim == '>' && (processingData->warn_level & 2)) {
             cwarn(
         "Header-name enclosed by <, > is an obsolescent feature %s" /* _W2_ */
-                    , out, 0L, skip);
+                    , out, 0L, skip, processingData);
         }
 #if NWORK-2 > SLEN90MIN
-        if (standard && out_p - out > std_limits.str_len && (warn_level & 4))
+        if (processingData->standard && out_p - out > processingData->std_limits.str_len && (processingData->warn_level & 4))
             cwarn( "Quotation longer than %.0s%ld bytes"    /* _W4_ */
-                    , NULL, std_limits.str_len, NULL);
+                    , NULL, processingData->std_limits.str_len, NULL, processingData);
 #endif
     }
 
 done:
-    in_token = FALSE;
+    processingData->supportProcessingData.in_token = FALSE;
     return  out_p;
 }
 
 static char *   cat_line(
-    int     del_bsl         /* Delete the <backslash><newline> ?    */
+    int     del_bsl,        /* Delete the <backslash><newline> ?    */
+    processing_data_t* processingData
 )
 /*
  * If del_bsl == TRUE:
@@ -913,33 +899,34 @@ static char *   cat_line(
     char *  save1, * save2;
 
     if (del_bsl) {          /* Delete the <backslash><newline>      */
-        infile->bptr -= 2;
-        len = infile->bptr - infile->buffer;
+        processingData->infile->bptr -= 2;
+        len = processingData->infile->bptr - processingData->infile->buffer;
     } else {        /* Overwrite the <newline> with <backslash>'n'  */
-        strcpy( infile->bptr, "\\n");
-        len = strlen( infile->buffer);
+        strcpy( processingData->infile->bptr, "\\n");
+        len = strlen( processingData->infile->buffer);
     }
-    save1 = save_string( infile->buffer);
-    save2 = get_line( FALSE);   /* infile->buffer is overwritten    */
+    save1 = save_string( processingData->infile->buffer);
+    save2 = get_line( FALSE, processingData);   /* infile->buffer is overwritten    */
     if (save2 == NULL) {
         free( save1);
         return  NULL;
     }
-    save2 = save_string( infile->buffer);
-    memcpy( infile->buffer, save1, len);
-    strcpy( infile->buffer + len, save2);               /* Catenate */
+    save2 = save_string( processingData->infile->buffer);
+    memcpy( processingData->infile->buffer, save1, len);
+    strcpy( processingData->infile->buffer + len, save2);               /* Catenate */
     free( save1);
     free( save2);
     if (! del_bsl)
         len -= 2;
-    infile->bptr = infile->buffer + len;
-    return  infile->bptr;
+    processingData->infile->bptr = processingData->infile->buffer + len;
+    return  processingData->infile->bptr;
 }
 
 static char *   scan_number(
     int     c,                              /* First char of number */
     char *  out,                            /* Output buffer        */
-    char *  out_end                 /* Limit of output buffer       */
+    char *  out_end,                 /* Limit of output buffer       */
+    processing_data_t* processingData
 )
 /*
  * Read a preprocessing number.
@@ -955,38 +942,38 @@ static char *   scan_number(
     do {
         *out_p++ = c;
         if (c == 'E' || c == 'e'    /* Sign should follow 'E', 'e', */
-                || (stdc3 && (c == 'P' || c == 'p'))
+                || (processingData->stdc3 && (c == 'P' || c == 'p'))
                                             /* 'P' or 'p'.          */
                 ) {
-            c = get_ch();
+            c = get_ch(processingData);
             if (c == '+' || c == '-') {
                 *out_p++ = c;
-                c = get_ch();
+                c = get_ch(processingData);
             }
 #if OK_UCN
-        } else if (mcpp_mode == STD && c == '\\' && stdc3) {
+        } else if (processingData->mcpp_mode == STD && c == '\\' && processingData->stdc3) {
             int     cnt;
             char *  tp;
 
-            if ((c = get_ch()) == 'u') {
+            if ((c = get_ch(processingData)) == 'u') {
                 cnt = 4;
             } else if (c == 'U') {
                 cnt = 8;
             } else {
-                unget_ch();
+                unget_ch(processingData);
                 out_p--;
                 break;
             }
             *out_p++ = c;
-            if ((tp = scan_ucn( cnt, out_p)) == NULL)      /* Error    */
+            if ((tp = scan_ucn( cnt, out_p, processingData)) == NULL)      /* Error    */
                 break;
             else
                 out_p = tp;
-            c = get_ch();
+            c = get_ch(processingData);
 #endif  /* OK_UCN   */
 #if OK_MBIDENT
         } else if (mcpp_mode == STD && (char_type[ c] & mbchk) && stdc3) {
-            len = mb_read( c, &infile->bptr, &out_p);
+            len = processingData->mb_read( c, &infile->bptr, &out_p);
             if (len & MB_ERROR) {
                 if (infile->mf)													// Anima ADD
                     cerror(
@@ -995,11 +982,11 @@ static char *   scan_number(
             }
 #endif  /* OK_MBIDENT   */
         } else {
-            c = get_ch();
+            c = get_ch(processingData);
         }
-    } while ((char_type[ c] & (DIG | DOT | LET))    /* Digit, dot or letter */
+    } while ((processingData->char_type[ c] & (DIG | DOT | LET))    /* Digit, dot or letter */
 #if OK_UCN
-            || (mcpp_mode == STD && c == '\\' && stdc3)
+            || (processingData->mcpp_mode == STD && c == '\\' && processingData->stdc3)
 #endif
 #if OK_MBIDENT
             || (mcpp_mode == STD && (char_type[ c] & mbchk) && stdc3)
@@ -1009,8 +996,8 @@ static char *   scan_number(
     *out_p = EOS;
     if (out_end < out_p)
         cfatal( "Too long pp-number token \"%s\""           /* _F_  */
-                , out, 0L, NULL);
-    unget_ch();
+                , out, 0L, NULL, processingData);
+    unget_ch(processingData);
     return  out_p;
 }
 
@@ -1019,7 +1006,8 @@ static char *   scan_number(
 static char *   scan_number_prestd(
     int         c,                          /* First char of number */
     char *      out,                        /* Output buffer        */
-    char *      out_end             /* Limit of output buffer       */
+    char *      out_end,            /* Limit of output buffer       */
+    processing_data_t* processingData
 )
 /*
  * Process a number.  We know that c is from 0 to 9 or dot.
@@ -1038,7 +1026,7 @@ static char *   scan_number_prestd(
     radix = 10;                             /* Assume decimal       */
     if ((dotflag = (c == '.')) != FALSE) {  /* . something?         */
         *out++ = '.';                       /* Always out the dot   */
-        if ((char_type[(c = get_ch())] & DIG) == 0) {
+        if ((processingData->char_type[(c = get_ch(processingData))] & DIG) == 0) {
                                             /* If not a float numb, */
             goto  nomore;                   /* All done for now     */
         }
@@ -1046,11 +1034,11 @@ static char *   scan_number_prestd(
     else if (c == '0') {                    /* Octal or hex?        */
         *out++ = c;                         /* Stuff initial zero   */
         radix = 8;                          /* Assume it's octal    */
-        c = get_ch();                       /* Look for an 'x'      */
+        c = get_ch(processingData);                       /* Look for an 'x'      */
         if (c == 'x' || c == 'X') {         /* Did we get one?      */
             radix = 16;                     /* Remember new radix   */
             *out++ = c;                     /* Stuff the 'x'        */
-            c = get_ch();                   /* Get next character   */
+            c = get_ch(processingData);                   /* Get next character   */
         }
     }
     while (1) {                             /* Process curr. char.  */
@@ -1064,7 +1052,7 @@ static char *   scan_number_prestd(
             expseen = TRUE;                 /* Set exponent seen    */
             radix = 10;                     /* Decimal exponent     */
             *out++ = c;                     /* Output the 'e'       */
-            if ((c = get_ch()) != '+' && c != '-')
+            if ((c = get_ch(processingData)) != '+' && c != '-')
                 continue;
         }
         else if (radix != 16 && c == '.') {
@@ -1090,7 +1078,7 @@ static char *   scan_number_prestd(
             }                               /* End of switch        */
         }                                   /* End general case     */
         *out++ = c;                         /* Accept the character */
-        c = get_ch();                       /* Read another char    */
+        c = get_ch(processingData);                       /* Read another char    */
     }                                       /* End of scan loop     */
 
     if (out_end < out)                      /* Buffer overflow      */
@@ -1120,28 +1108,29 @@ done:
                 goto nomore;
             }
             *out++ = c;                     /* Got 'L' .            */
-            c = get_ch();                   /* Look at next, too.   */
+            c = get_ch(processingData);                   /* Look at next, too.   */
         }
     }
 
 nomore: *out = EOS;
     if (out_end < out)
         goto  overflow;
-    unget_ch();                             /* Not part of a number */
-    if (octal89 && radix == 8 && (warn_level & 1))
+    unget_ch(processingData);                             /* Not part of a number */
+    if (octal89 && radix == 8 && (processingData->warn_level & 1))
         cwarn( "Illegal digit in octal number \"%s\""       /* _W1_ */
-                , out_s, 0L, NULL);
+                , out_s, 0L, NULL, processingData);
     return  out;
 
 overflow:
-    cfatal( "Too long number token \"%s\"", out_s, 0L, NULL);       /* _F_  */
+    cfatal( "Too long number token \"%s\"", out_s, 0L, NULL, processingData);       /* _F_  */
     return  out;
 }
 
 #if OK_UCN
 static char *   scan_ucn(
     int     cnt,                            /* Bytes of sequence    */
-    char *  out                             /* Output buffer        */
+    char *  out,                             /* Output buffer        */
+    processing_data_t* processingData
 )
 /*
  * Scan an UCN sequence and put the sequence to 'out'.
@@ -1154,13 +1143,13 @@ static char *   scan_ucn(
 
     value = 0L;
     for (i = 0; i < cnt; i++) {
-        c = get_ch();
+        c = get_ch(processingData);
         if (! isxdigit( c)) {
-            if (infile->mf)													// Anima ADD
+            if (processingData->infile->mf)													// Anima ADD
                 cerror( "Illegal UCN sequence"              /* _E_  */
-                        , NULL, 0L, NULL);
+                        , NULL, 0L, NULL, processingData);
                 *out = EOS;
-                unget_ch();
+                unget_ch(processingData);
                 return  NULL;
         }
         c = tolower( c);
@@ -1168,21 +1157,22 @@ static char *   scan_ucn(
         c = (isdigit( c) ? (c - '0') : (c - 'a' + 10));
         value = (value << 4) | c;
     }
-    if (infile->mf                              /* In source        */		// Anima ADD
+    if (processingData->infile->mf                              /* In source        */		// Anima ADD
             && ((value >= 0L && value <= 0x9FL
                 && value != 0x24L && value != 0x40L && value != 0x60L)
                                     /* Basic source character       */
-            || (stdc3 && (value >= 0xD800L && value <= 0xDFFFL))))
+            || (processingData->stdc3 && (value >= 0xD800L && value <= 0xDFFFL))))
                                     /* Reserved for special chars   */
         cerror( "UCN cannot specify the value %.0s\"%08lx\""    /* _E_    */
-                    , NULL, (long) value, NULL);
+                    , NULL, (long) value, NULL, processingData);
     return  out;
 }
 #endif  /* OK_UCN   */
 
 static char *   scan_op(
     int     c,                          /* First char of the token  */
-    char *  out                         /* Output buffer            */
+    char *  out,                         /* Output buffer            */
+    processing_data_t* processingData
 )
 /*
  * Scan C operator or punctuator into the specified buffer.
@@ -1197,100 +1187,100 @@ static char *   scan_op(
     *out++ = c;
 
     switch (c) {
-    case '~':   openum = OP_COM;    break;
-    case '(':   openum = OP_LPA;    break;
-    case ')':   openum = OP_RPA;    break;
-    case '?':   openum = OP_QUE;    break;
+    case '~':   processingData->openum = OP_COM;    break;
+    case '(':   processingData->openum = OP_LPA;    break;
+    case ')':   processingData->openum = OP_RPA;    break;
+    case '?':   processingData->openum = OP_QUE;    break;
     case ';':    case '[':    case ']':    case '{':
     case '}':    case ',':
-        openum = OP_1;
+        processingData->openum = OP_1;
         break;
     default:
-        openum = OP_2;                  /* Tentative guess          */
+        processingData->openum = OP_2;                  /* Tentative guess          */
     }
 
-    if (openum != OP_2) {               /* Single byte operators    */
+    if (processingData->openum != OP_2) {               /* Single byte operators    */
         *out = EOS;
         return  out;
     }
 
-    c2 = get_ch();                      /* Possibly two bytes ops   */
+    c2 = get_ch(processingData);                      /* Possibly two bytes ops   */
     *out++ = c2;
 
     switch (c) {
     case '=':
-        openum = ((c2 == '=') ? OP_EQ : OP_1);          /* ==, =    */
+        processingData->openum = ((c2 == '=') ? OP_EQ : OP_1);          /* ==, =    */
         break;
     case '!':
-        openum = ((c2 == '=') ? OP_NE : OP_NOT);        /* !=, !    */
+        processingData->openum = ((c2 == '=') ? OP_NE : OP_NOT);        /* !=, !    */
         break;
     case '&':
         switch (c2) {
-        case '&':   openum = OP_ANA;        break;      /* &&       */
+        case '&':   processingData->openum = OP_ANA;        break;      /* &&       */
         case '=':   /* openum = OP_2; */    break;      /* &=       */
-        default :   openum = OP_AND;        break;      /* &        */
+        default :   processingData->openum = OP_AND;        break;      /* &        */
         }
         break;
     case '|':
         switch (c2) {
-        case '|':   openum = OP_ORO;        break;      /* ||       */
+        case '|':   processingData->openum = OP_ORO;        break;      /* ||       */
         case '=':   /* openum = OP_2; */    break;      /* |=       */
-        default :   openum = OP_OR;         break;      /* |        */
+        default :   processingData->openum = OP_OR;         break;      /* |        */
         }
         break;
     case '<':
         switch (c2) {
-        case '<':   c3 = get_ch();
+        case '<':   c3 = get_ch(processingData);
             if (c3 == '=') {
-                openum = OP_3;                          /* <<=      */
+                processingData->openum = OP_3;                          /* <<=      */
                 *out++ = c3;
             } else {
-                openum = OP_SL;                         /* <<       */
-                unget_ch();
+                processingData->openum = OP_SL;                         /* <<       */
+                unget_ch(processingData);
             }
             break;
-        case '=':   openum = OP_LE;         break;      /* <=       */
+        case '=':   processingData->openum = OP_LE;         break;      /* <=       */
         case ':':                                   /* <: i.e. [    */
-            if (mcpp_mode == STD && option_flags.dig)
-                openum = OP_LBRCK_D;
+            if (processingData->mcpp_mode == STD && processingData->option_flags.dig)
+                processingData->openum = OP_LBRCK_D;
             else
-                openum = OP_LT;
+                processingData->openum = OP_LT;
             break;
         case '%':                                   /* <% i.e. {    */
-            if (mcpp_mode == STD && option_flags.dig)
-                openum = OP_LBRACE_D;
+            if (processingData->mcpp_mode == STD && processingData->option_flags.dig)
+                processingData->openum = OP_LBRACE_D;
             else
-                openum = OP_LT;
+                processingData->openum = OP_LT;
             break;
-        default :   openum = OP_LT;         break;      /* <        */
+        default :   processingData->openum = OP_LT;         break;      /* <        */
         }
         break;
     case '>':
         switch (c2) {
-        case '>':   c3 = get_ch();
+        case '>':   c3 = get_ch(processingData);
             if (c3 == '=') {
-                openum = OP_3;                          /* >>=      */
+                processingData->openum = OP_3;                          /* >>=      */
                 *out++ = c3;
             } else {
-                openum = OP_SR;                         /* >>       */
-                unget_ch();
+                processingData->openum = OP_SR;                         /* >>       */
+                unget_ch(processingData);
             }
             break;
-        case '=':   openum = OP_GE;     break;          /* >=       */
-        default :   openum = OP_GT;     break;          /* >        */
+        case '=':   processingData->openum = OP_GE;     break;          /* >=       */
+        default :   processingData->openum = OP_GT;     break;          /* >        */
         }
         break;
     case '#':
-        if (standard && (in_define || macro_line))  /* in #define or macro  */
-            openum = ((c2 == '#') ? OP_CAT : OP_STR);   /* ##, #    */
+        if (processingData->standard && (processingData->in_define || processingData->macro_line))  /* in #define or macro  */
+            processingData->openum = ((c2 == '#') ? OP_CAT : OP_STR);   /* ##, #    */
         else
-            openum = OP_1;                              /* #        */
+            processingData->openum = OP_1;                              /* #        */
         break;
     case '+':
         switch (c2) {
         case '+':                                       /* ++       */
         case '=':   /* openum = OP_2; */    break;      /* +=       */
-        default :   openum = OP_ADD;        break;      /* +        */
+        default :   processingData->openum = OP_ADD;        break;      /* +        */
         }
         break;
     case '-':
@@ -1300,118 +1290,118 @@ static char *   scan_op(
             /* openum = OP_2;   */
             break;
         case '>':
-            if (cplus_val) {
-                if ((c3 = get_ch()) == '*') {           /* ->*      */
-                    openum = OP_3;
+            if (processingData->cplus_val) {
+                if ((c3 = get_ch(processingData)) == '*') {           /* ->*      */
+                    processingData->openum = OP_3;
                     *out++ = c3;
                 } else {
                     /* openum = OP_2;   */
-                    unget_ch();
+                    unget_ch(processingData);
                 }
             }   /* else openum = OP_2;  */              /* ->       */
             /* else openum = OP_2;      */
             break;
-        default :   openum = OP_SUB;        break;      /* -        */
+        default :   processingData->openum = OP_SUB;        break;      /* -        */
         }
         break;
     case '%':
         switch (c2) {
         case '=':                           break;      /* %=       */
         case '>':                                   /* %> i.e. }    */
-            if (mcpp_mode == STD && option_flags.dig)
-                openum = OP_RBRACE_D;
+            if (processingData->mcpp_mode == STD && processingData->option_flags.dig)
+                processingData->openum = OP_RBRACE_D;
             else
-                openum = OP_MOD;
+                processingData->openum = OP_MOD;
             break;
         case ':':
-            if (mcpp_mode == STD && option_flags.dig) {
-                if ((c3 = get_ch()) == '%') {
-                    if ((c4 = get_ch()) == ':') {   /* %:%: i.e. ## */
-                        openum = OP_DSHARP_D;
+            if (processingData->mcpp_mode == STD && processingData->option_flags.dig) {
+                if ((c3 = get_ch(processingData)) == '%') {
+                    if ((c4 = get_ch(processingData)) == ':') {   /* %:%: i.e. ## */
+                        processingData->openum = OP_DSHARP_D;
                         *out++ = c3;
                         *out++ = c4;
                     } else {
-                        unget_ch();
-                        unget_ch();
-                        openum = OP_SHARP_D;        /* %: i.e. #    */
+                        unget_ch(processingData);
+                        unget_ch(processingData);
+                        processingData->openum = OP_SHARP_D;        /* %: i.e. #    */
                     }
                 } else {
-                    unget_ch();
-                    openum = OP_SHARP_D;            /* %: i.e. #    */
+                    unget_ch(processingData);
+                    processingData->openum = OP_SHARP_D;            /* %: i.e. #    */
                 }
-                if (in_define) {                    /* in #define   */
-                    if (openum == OP_DSHARP_D)
-                        openum = OP_CAT;
+                if (processingData->in_define) {                    /* in #define   */
+                    if (processingData->openum == OP_DSHARP_D)
+                        processingData->openum = OP_CAT;
                     else
-                        openum = OP_STR;
+                        processingData->openum = OP_STR;
                 }
             } else {
-                openum = OP_MOD;
+                processingData->openum = OP_MOD;
             }
             break;
-        default :   openum = OP_MOD;        break;      /* %        */
+        default :   processingData->openum = OP_MOD;        break;      /* %        */
         }
         break;
     case '*':
         if (c2 != '=')                                  /* *        */
-            openum = OP_MUL;
+            processingData->openum = OP_MUL;
         /* else openum = OP_2;  */                      /* *=       */
         break;
     case '/':
         if (c2 != '=')                                  /* /        */
-            openum = OP_DIV;
+            processingData->openum = OP_DIV;
         /* else openum = OP_2;  */                      /* /=       */
         break;
     case '^':
         if (c2 != '=')                                  /* ^        */
-            openum = OP_XOR;
+            processingData->openum = OP_XOR;
         /* else openum = OP_2;  */                      /* ^=       */
         break;
     case '.':
-        if (standard) {
+        if (processingData->standard) {
             if (c2 == '.') {
-                c3 = get_ch();
+                c3 = get_ch(processingData);
                 if (c3 == '.') {
-                    openum = OP_ELL;                    /* ...      */
+                    processingData->openum = OP_ELL;                    /* ...      */
                     *out++ = c3;
                     break;
                 } else {
-                    unget_ch();
-                    openum = OP_1;
+                    unget_ch(processingData);
+                    processingData->openum = OP_1;
                 }
-            } else if (cplus_val && c2 == '*') {        /* .*       */
+            } else if (processingData->cplus_val && c2 == '*') {        /* .*       */
                 /* openum = OP_2    */  ;
             } else {                                    /* .        */
-                openum = OP_1;
+                processingData->openum = OP_1;
             }
         } else {    
-            openum = OP_1;
+            processingData->openum = OP_1;
         }
         break;
     case ':':
-        if (cplus_val && c2 == ':')                     /* ::       */
+        if (processingData->cplus_val && c2 == ':')                     /* ::       */
             /* openum = OP_2    */  ;
-        else if (mcpp_mode == STD && c2 == '>' && option_flags.dig)
-            openum = OP_RBRCK_D;                    /* :> i.e. ]    */
+        else if (processingData->mcpp_mode == STD && c2 == '>' && processingData->option_flags.dig)
+            processingData->openum = OP_RBRCK_D;                    /* :> i.e. ]    */
         else                                            /* :        */
-            openum = OP_COL;
+            processingData->openum = OP_COL;
         break;
     default:                                    /* Never reach here */
         cfatal( "Bug: Punctuator is mis-implemented %.0s0lx%x"      /* _F_  */
-                , NULL, (long) c, NULL);
-        openum = OP_1;
+                , NULL, (long) c, NULL, processingData);
+        processingData->openum = OP_1;
         break;
     }
 
-    switch (openum) {
+    switch (processingData->openum) {
     case OP_STR:
-        if (mcpp_mode == STD && c == '%')    break;              /* %:   */
+        if (processingData->mcpp_mode == STD && c == '%')    break;              /* %:   */
     case OP_1:
     case OP_NOT:    case OP_AND:    case OP_OR:     case OP_LT:
     case OP_GT:     case OP_ADD:    case OP_SUB:    case OP_MOD:
     case OP_MUL:    case OP_DIV:    case OP_XOR:    case OP_COM:
     case OP_COL:    /* Any single byte operator or punctuator       */
-        unget_ch();
+        unget_ch(processingData);
         out--;
         break;
     default:        /* Two or more bytes operators or punctuators   */
@@ -1422,9 +1412,7 @@ static char *   scan_op(
     return  out;
 }
 
-int     id_operator(
-    const char *    name
-)
+int     id_operator(const char *    name)
 /*
  * Check whether the name is identifier-like operator in C++.
  * Return the operator number if matched, return 0 if not matched.
@@ -1464,23 +1452,24 @@ int     id_operator(
 
 void    expanding(
     const char *    name,       /* The name of (nested) macro just expanded. */
-    int             to_be_freed /* The name should be freed later.  */
+    int             to_be_freed,/* The name should be freed later.  */
+    processing_data_t* processingData
 )
 /*
  * Remember used macro name for diagnostic.
  */
 {
-    if (exp_mac_ind < EXP_MAC_IND_MAX - 1) {
-        exp_mac_ind++;
+    if (processingData->supportProcessingData.exp_mac_ind < EXP_MAC_IND_MAX - 1) {
+        processingData->supportProcessingData.exp_mac_ind++;
     } else {
-        clear_exp_mac();
-        exp_mac_ind++;
+        clear_exp_mac(processingData);
+        processingData->supportProcessingData.exp_mac_ind++;
     }
-    expanding_macro[ exp_mac_ind].name = name;
-    expanding_macro[ exp_mac_ind].to_be_freed = to_be_freed;
+    processingData->supportProcessingData.expanding_macro[processingData->supportProcessingData.exp_mac_ind].name = name;
+    processingData->supportProcessingData.expanding_macro[processingData->supportProcessingData.exp_mac_ind].to_be_freed = to_be_freed;
 }
 
-void    clear_exp_mac( void)
+void    clear_exp_mac(processing_data_t* processingData)
 /*
  * Initialize expanding_macro[] freeing names registered in
  * name_to_be_freed[].
@@ -1489,15 +1478,15 @@ void    clear_exp_mac( void)
     int     i;
 
     for (i = 1; i < EXP_MAC_IND_MAX; i++) {
-        if (expanding_macro[ i].to_be_freed) {
-            free( (void *) expanding_macro[ i].name);
-            expanding_macro[ i].to_be_freed = FALSE;
+        if (processingData->supportProcessingData.expanding_macro[ i].to_be_freed) {
+            free( (void *) processingData->supportProcessingData.expanding_macro[ i].name);
+            processingData->supportProcessingData.expanding_macro[ i].to_be_freed = FALSE;
         }
     }
-    exp_mac_ind = 0;
+    processingData->supportProcessingData.exp_mac_ind = 0;
 }
 
-int     get_ch( void)
+int     get_ch(processing_data_t* processingData)
 /*
  * Return the next character from a macro or the current file.
  * Always return the value representable by unsigned char.
@@ -1513,38 +1502,38 @@ int     get_ch( void)
      * via scan_token()) in Standard mode to simplify tokenization.
      * Any token cannot cross "file"s.
      */
-    if (in_token)
-        return (*infile->bptr++ & UCHARMAX);
+    if (processingData->supportProcessingData.in_token)
+        return (*processingData->infile->bptr++ & UCHARMAX);
 
-    if ((file = infile) == NULL)
+    if ((file = processingData->infile) == NULL)
         return  CHAR_EOF;                   /* End of all input     */
 
-    if (mcpp_mode == POST_STD && file->mf) {        /* In a source file     */		// Anima ADD
-        switch (insert_sep) {
+    if (processingData->mcpp_mode == POST_STD && file->mf) {        /* In a source file     */		// Anima ADD
+        switch (processingData->insert_sep) {
         case NO_SEP:
             break;
         case INSERT_SEP:                /* Insert a token separator */
-            insert_sep = INSERTED_SEP;      /* Remember this fact   */
+            processingData->insert_sep = INSERTED_SEP;      /* Remember this fact   */
             return  ' ';                    /*   for unget_ch().    */
         case INSERTED_SEP:                  /* Has just inserted    */
-            insert_sep = NO_SEP;            /* Clear the flag       */
+            processingData->insert_sep = NO_SEP;            /* Clear the flag       */
             break;
         }
     }
-    if (! standard && squeezews) {
+    if (! processingData->standard && processingData->supportProcessingData.squeezews) {
         if (*file->bptr == ' ')
             file->bptr++;                   /* Squeeze white spaces */
-        squeezews = FALSE;
+        processingData->supportProcessingData.squeezews = FALSE;
     }
 
-    if (mcpp_debug & GETC) {
-        mcpp_fprintf( DBG, "get_ch(%s) '%c' line %ld, bptr = %d, buffer"
-            , file->mf ? cur_fullname : file->real_fname ? file->real_fname			// Anima ADD
+    if (processingData->mcpp_debug & GETC) {
+        processingData->mcpp_fprintf( DBG, processingData, "get_ch(%s) '%c' line %ld, bptr = %d, buffer"
+            , file->mf ? processingData->cur_fullname : file->real_fname ? file->real_fname			// Anima ADD
             : file->filename ? file->filename : "NULL"
             , *file->bptr & UCHARMAX
-            , src_line, (int) (file->bptr - file->buffer));
-        dump_string( NULL, file->buffer);
-        dump_unget( "get entrance");
+            , processingData->src_line, (int) (file->bptr - file->buffer));
+        dump_string( NULL, file->buffer, processingData);
+        dump_unget( "get entrance", processingData);
     }
 
     /*
@@ -1556,16 +1545,16 @@ int     get_ch( void)
      * The character is converted to int with no sign-extension.
      */
     if ((c = (*file->bptr++ & UCHARMAX)) != EOS) {
-        if (standard)
+        if (processingData->standard)
             return  c;                      /* Just a character     */
-        if (! in_string && c == '\\' && *file->bptr == '\n'
-                && in_define        /* '\\''\n' is deleted in #define line, */
+        if (! processingData->supportProcessingData.in_string && c == '\\' && *file->bptr == '\n'
+                && processingData->in_define        /* '\\''\n' is deleted in #define line, */
                     /*   provided the '\\' is not the 2nd byte of mbchar.   */
                 && ! last_is_mbchar( file->buffer, strlen( file->buffer) - 2
-                && ! keep_spaces)
+                && ! processingData->keep_spaces, processingData)
             ) {
             if (*(file->bptr - 2) == ' ')
-                squeezews = TRUE;
+                processingData->supportProcessingData.squeezews = TRUE;
         } else {
             return  c;
         }
@@ -1577,15 +1566,15 @@ int     get_ch( void)
      * restart from the top.
      */
     if (file->mf &&                         /* In source file       */		// Anima ADD
-            parse_line() != NULL)           /* Get line from file   */
-        return  get_ch();
+            parse_line(processingData) != NULL)           /* Get line from file   */
+        return  get_ch(processingData);
     /*
      * Free up space used by the (finished) file or macro and restart
      * input from the parent file/macro, if any.
      */
-    infile = file->parent;                  /* Unwind file chain    */
+    processingData->infile = file->parent;                  /* Unwind file chain    */
     free( file->buffer);                    /* Free buffer          */
-    if (infile == NULL) {                   /* If at end of input   */
+    if (processingData->infile == NULL) {                   /* If at end of input   */
         free( file->filename);
         free( file->src_dir);
         free( file);    /* full_fname is the same with filename for main file*/
@@ -1597,47 +1586,47 @@ int     get_ch( void)
         //fclose( file->fp);                  /* Close finished file  */	// Anima ADD
 		mfclose(file->mf);
         /* Do not free file->real_fname and file->full_fname        */
-        cur_fullname = infile->full_fname;
-        cur_fname = infile->real_fname;     /* Restore current fname*/
-        if (infile->pos != 0L) {            /* Includer was closed  */
+        processingData->cur_fullname = processingData->infile->full_fname;
+        processingData->cur_fname = processingData->infile->real_fname;     /* Restore current fname*/
+        if (processingData->infile->pos != 0L) {            /* Includer was closed  */
             //infile->fp = fopen( cur_fullname, "r");						// Anima ADD
             //fseek( infile->fp, infile->pos, SEEK_SET);					// Anima ADD
-			infile->mf = mfopen(cur_fullname);								// Anima ADD
-			mfseek(infile->mf, infile->pos);								// Anima ADD
+			processingData->infile->mf = mfopen(processingData->cur_fullname);								// Anima ADD
+			mfseek(processingData->infile->mf, processingData->infile->pos);								// Anima ADD
         }   /* Re-open the includer and restore the file-position   */
-        len = (int) (infile->bptr - infile->buffer);
-        infile->buffer = xrealloc( infile->buffer, NBUFF);
+        len = (int) (processingData->infile->bptr - processingData->infile->buffer);
+        processingData->infile->buffer = xrealloc( processingData->infile->buffer, NBUFF);
             /* Restore full size buffer to get the next line        */
-        infile->bptr = infile->buffer + len;
-        src_line = infile->line;            /* Reset line number    */
-        inc_dirp = infile->dirp;            /* Includer's directory */
+        processingData->infile->bptr = processingData->infile->buffer + len;
+        processingData->src_line = processingData->infile->line;            /* Reset line number    */
+        processingData->inc_dirp = processingData->infile->dirp;            /* Includer's directory */
 #if MCPP_LIB
         mcpp_set_out_func( infile->last_fputc, infile->last_fputs,
                            infile->last_fprintf);
 #endif
-        include_nest--;
-        src_line++;                         /* Next line to #include*/
-        sharp( NULL, infile->include_opt ? 1 : (file->include_opt ? 0 : 2));
+        processingData->include_nest--;
+        processingData->src_line++;                         /* Next line to #include*/
+        sharp( NULL, processingData->infile->include_opt ? 1 : (file->include_opt ? 0 : 2), processingData);
             /* Need a #line now.  Marker depends on include_opt.    */
             /* The file of include_opt should be marked as 1.       */
             /* Else if returned from include_opt file, it is the    */
             /* main input file, and should not be marked.           */
             /* Else, it is normal includer file, and marked as 2.   */
-        src_line--;
-        newlines = 0;                       /* Clear the blank lines*/
-        if (mcpp_debug & MACRO_CALL)    /* Should be re-initialized */
-            com_cat_line.last_line = bsl_cat_line.last_line = 0L;
+        processingData->src_line--;
+        processingData->newlines = 0;                       /* Clear the blank lines*/
+        if (processingData->mcpp_debug & MACRO_CALL)    /* Should be re-initialized */
+            processingData->supportProcessingData.com_cat_line.last_line = processingData->supportProcessingData.bsl_cat_line.last_line = 0L;
     } else if (file->filename) {            /* Expanding macro      */
-        if (macro_name)     /* file->filename should be freed later */
-            expanding( file->filename, TRUE);
+        if (processingData->macro_name)     /* file->filename should be freed later */
+            expanding( file->filename, TRUE, processingData);
         else
             free( file->filename);
     }
     free( file);                            /* Free file space      */
-    return  get_ch();                       /* Get from the parent  */
+    return  get_ch(processingData);                       /* Get from the parent  */
 }
 
-static char *   parse_line( void)
+static char *   parse_line(processing_data_t* processingData)
 /*
  * ANSI (ISO) C: translation phase 3.
  * Parse a logical line.
@@ -1657,20 +1646,20 @@ static char *   parse_line( void)
     size_t      com_size;
     int         c;
 
-    if ((sp = get_line( FALSE)) == NULL)    /* Next logical line    */
+    if ((sp = get_line( FALSE, processingData)) == NULL)    /* Next logical line    */
         return  NULL;                       /* End of a file        */
-    if (in_asm) {                           /* In #asm block        */
-        while (char_type[ *sp++ & UCHARMAX] & SPA)
+    if (processingData->in_asm) {                           /* In #asm block        */
+        while (processingData->char_type[ *sp++ & UCHARMAX] & SPA)
             ;
         if (*--sp == '#')                   /* Directive line       */
-            infile->bptr = sp;
-        return  infile->bptr;               /* Don't tokenize       */
+            processingData->infile->bptr = sp;
+        return  processingData->infile->bptr;               /* Don't tokenize       */
     }
     tp = temp = xmalloc( (size_t) NBUFF);
     limit = temp + NBUFF - 2;
 
-    while (char_type[ c = *sp++ & UCHARMAX] & HSP) {
-        if (mcpp_mode != POST_STD)
+    while (processingData->char_type[ c = *sp++ & UCHARMAX] & HSP) {
+        if (processingData->mcpp_mode != POST_STD)
             /* Preserve line top horizontal white spaces    */
             /*      as they are for human-readability       */
             *tp++ = c;
@@ -1685,46 +1674,46 @@ static char *   parse_line( void)
             switch (*sp++) {
             case '*':                       /* Start of a comment   */
 com_start:
-                if ((sp = read_a_comment( sp, &com_size)) == NULL) {
+                if ((sp = read_a_comment( sp, &com_size, processingData)) == NULL) {
                     free( temp);            /* End of file with un- */
                     return  NULL;           /*   terminated comment */
                 }
-                if (keep_spaces && mcpp_mode != OLD_PREP) {
+                if (processingData->keep_spaces && processingData->mcpp_mode != OLD_PREP) {
                     if (tp + com_size >= limit - 1)     /* Too long comment */
                         com_size = limit - tp - 1;      /* Truncate */
                     while (com_size--)
                         *tp++ = ' ';        /* Spaces of the comment length */
                     break;
                 }
-                switch (mcpp_mode) {
+                switch (processingData->mcpp_mode) {
                 case POST_STD:
                     if (temp < tp && *(tp - 1) != ' ')
                         *tp++ = ' ';        /* Squeeze white spaces */
                     break;
                 case OLD_PREP:
                     if (temp == tp
-                            || ! (char_type[ *(tp - 1) & UCHARMAX] & HSP))
+                            || ! (processingData->char_type[ *(tp - 1) & UCHARMAX] & HSP))
                         *tp++ = COM_SEP;    /* Convert to magic character   */
                     break;
                 default:
                     if (temp == tp ||
-                            ! (char_type[ *(tp - 1) & UCHARMAX] & HSP))
+                            ! (processingData->char_type[ *(tp - 1) & UCHARMAX] & HSP))
                         *tp++ = ' ';        /* Squeeze white spaces */
                     break;
                 }
                 break;
             case '/':                                       /* //   */
-                if (! standard)
+                if (! processingData->standard)
                     goto  not_comment;
                 /* Comment when C++ or __STDC_VERSION__ >= 199901L      */
                 /* Need not to convert to a space because '\n' follows  */
-                if (! stdc2 && (warn_level & 2))
+                if (! processingData->stdc2 && (processingData->warn_level & 2))
                     cwarn( "Parsed \"//\" as comment"       /* _W2_ */
-                            , NULL, 0L, NULL);
-                if (keep_comments) {
+                            , NULL, 0L, NULL, processingData);
+                if (processingData->keep_comments) {
                     sp -= 2;
                     while (*sp != '\n')     /* Until end of line    */
-                        mcpp_fputc( *sp++, OUT);
+                        processingData->mcpp_fputc( *sp++, OUT, processingData);
                 }
                 goto  end_line;
             default:                        /* Not a comment        */
@@ -1732,7 +1721,7 @@ not_comment:
 // Anima ADD
 				if (limit < tp) {
 					cfatal( "Failed to parse non-comment and wrote beyond temp area"     /* _F_  */
-						   , NULL, 0L, NULL);
+						   , NULL, 0L, NULL, processingData);
 					*tp = EOS;
 				}
 // Anima ADD
@@ -1745,50 +1734,50 @@ not_comment:
                 /* Note that [CR+LF] is already converted to [LF].  */
         case '\f':
         case '\v':
-            if (warn_level & 4)
+            if (processingData->warn_level & 4)
                 cwarn( "Converted %.0s0x%02lx to a space"   /* _W4_ */
-                    , NULL, (long) c, NULL);
+                    , NULL, (long) c, NULL, processingData);
         case '\t':                          /* Horizontal space     */
         case ' ':
 // Anima ADD
 			if (limit < tp) {
 				cfatal( "Failed to parse space and wrote beyond temp area"     /* _F_  */
-					   , NULL, 0L, NULL);
+					   , NULL, 0L, NULL, processingData);
 				*tp = EOS;
 			}
-            if (keep_spaces) {
+            if (processingData->keep_spaces) {
                 if (c == '\t')
                     *tp++ = '\t';
                 else
 					*tp++ = ' ';            /* Convert to ' '       */
-            } else if (tp > temp && !(char_type[ *(tp - 1) & UCHARMAX] & HSP)) {
+            } else if (tp > temp && !(processingData->char_type[ *(tp - 1) & UCHARMAX] & HSP)) {
                 *tp++ = ' ';                /* Squeeze white spaces */
-            } else if (mcpp_mode == OLD_PREP && tp > temp && *(tp - 1) == COM_SEP) {
+            } else if (processingData->mcpp_mode == OLD_PREP && tp > temp && *(tp - 1) == COM_SEP) {
                 *(tp - 1) = ' ';    /* Replace COM_SEP with ' '     */
             }
 // Anima ADD
 			break;
         case '"':                           /* String literal       */
         case '\'':                          /* Character constant   */
-            infile->bptr = sp;
-            if (standard) {
-                tp = scan_quote( c, tp, limit, TRUE);
+            processingData->infile->bptr = sp;
+            if (processingData->standard) {
+                tp = scan_quote( c, tp, limit, TRUE, processingData);
             } else {
-                in_string = TRUE;   /* Enable line splicing by scan_quote() */
-                tp = scan_quote( c, tp, limit, TRUE);   /* (not by get_ch())*/
-                in_string = FALSE;
+                processingData->supportProcessingData.in_string = TRUE;   /* Enable line splicing by scan_quote() */
+                tp = scan_quote( c, tp, limit, TRUE, processingData);   /* (not by get_ch())*/
+                processingData->supportProcessingData.in_string = FALSE;
             }
             if (tp == NULL) {
                 free( temp);                /* Unbalanced quotation */
-                return  parse_line();       /* Skip the line        */
+                return  parse_line(processingData);       /* Skip the line        */
             }
-            sp = infile->bptr;
+            sp = processingData->infile->bptr;
             break;
         default:
             if (iscntrl( c)) {
                 cerror(             /* Skip the control character   */
     "Illegal control character %.0s0x%lx, skipped the character"    /* _E_  */
-                        , NULL, (long) c, NULL);
+                        , NULL, (long) c, NULL, processingData);
             } else {                        /* Any valid character  */
                 *tp++ = c;
             }
@@ -1798,34 +1787,35 @@ not_comment:
         if (limit < tp) {
             *tp = EOS;
             cfatal( "Too long line spliced by comments"     /* _F_  */
-                    , NULL, 0L, NULL);
+                    , NULL, 0L, NULL, processingData);
         }
     }
 
 end_line:
-    if (temp < tp && (char_type[ *(tp - 1) & UCHARMAX] & HSP))
+    if (temp < tp && (processingData->char_type[ *(tp - 1) & UCHARMAX] & HSP))
         tp--;                       /* Remove trailing white space  */
     *tp++ = '\n';
     *tp = EOS;
-    infile->bptr = strcpy( infile->buffer, temp);   /* Write back to buffer */
+    processingData->infile->bptr = strcpy( processingData->infile->buffer, temp);   /* Write back to buffer */
     free( temp);
-    if (macro_line != 0 && macro_line != MACRO_ERROR) { /* Expanding macro  */
-        temp = infile->buffer;
-        while (char_type[ *temp & UCHARMAX] & HSP)
+    if (processingData->macro_line != 0 && processingData->macro_line != MACRO_ERROR) { /* Expanding macro  */
+        temp = processingData->infile->buffer;
+        while (processingData->char_type[ *temp & UCHARMAX] & HSP)
             temp++;
         if (*temp == '#'        /* This line starts with # token    */
-                || (mcpp_mode == STD && *temp == '%' && *(temp + 1) == ':'))
-            if (warn_level & 1)
+                || (processingData->mcpp_mode == STD && *temp == '%' && *(temp + 1) == ':'))
+            if (processingData->warn_level & 1)
                 cwarn(
     "Macro started at line %.0s%ld swallowed directive-like line"   /* _W1_ */
-                    , NULL, macro_line, NULL);
+                    , NULL, processingData->macro_line, NULL, processingData);
     }
-    return  infile->buffer;
+    return  processingData->infile->buffer;
 }
 
 static char *   read_a_comment(
     char *      sp,                         /* Source               */
-    size_t *    sizp                        /* Size of the comment  */
+    size_t *    sizp,                       /* Size of the comment  */
+    processing_data_t* processingData
 )
 /*
  * Read over a comment (which may cross the lines).
@@ -1835,73 +1825,73 @@ static char *   read_a_comment(
     char *      saved_sp;
     int         cat_line = 0;       /* Number of catenated lines    */
 
-    if (keep_spaces) {
+    if (processingData->keep_spaces) {
         saved_sp = sp - 2;          /* '-2' for beginning / and *   */
         *sizp = 0;
     }        
-    if (keep_comments)                      /* If writing comments  */
-        mcpp_fputs( "/*", OUT);             /* Write the initializer*/
+    if (processingData->keep_comments)                      /* If writing comments  */
+        processingData->mcpp_fputs( "/*", OUT, processingData);             /* Write the initializer*/
     c = *sp++;
 
     while (1) {                             /* Eat a comment        */
-        if (keep_comments)
-            mcpp_fputc( c, OUT);
+        if (processingData->keep_comments)
+            processingData->mcpp_fputc( c, OUT, processingData);
 
         switch (c) {
         case '/':
             if ((c = *sp++) != '*')         /* Don't let comments   */
                 continue;                   /*   nest.              */
-            if (warn_level & 1)
-                cwarn( "\"/*\" within comment", NULL, 0L, NULL);    /* _W1_ */
-            if (keep_comments)
-                mcpp_fputc( c, OUT);
+            if (processingData->warn_level & 1)
+                cwarn( "\"/*\" within comment", NULL, 0L, NULL, processingData);    /* _W1_ */
+            if (processingData->keep_comments)
+                processingData->mcpp_fputc( c, OUT, processingData);
                                             /* Fall into * stuff    */
         case '*':
             if ((c = *sp++) != '/')         /* If comment doesn't   */
                 continue;                   /*   end, look at next. */
-            if (keep_comments) {            /* Put out comment      */
-                mcpp_fputc( c, OUT);        /*   terminator, too.   */
-                mcpp_fputc( '\n', OUT);     /* Append '\n' to avoid */
+            if (processingData->keep_comments) {            /* Put out comment      */
+                processingData->mcpp_fputc( c, OUT, processingData);        /*   terminator, too.   */
+                processingData->mcpp_fputc( '\n', OUT, processingData);     /* Append '\n' to avoid */
                     /*  trouble on some other tools such as rpcgen. */
-                wrong_line = TRUE;
+                processingData->wrong_line = TRUE;
             }
-            if (keep_spaces)                /* Save the length      */
+            if (processingData->keep_spaces)                /* Save the length      */
                 *sizp = *sizp + (sp - saved_sp);
-            if ((mcpp_debug & MACRO_CALL) && compiling) {
+            if ((processingData->mcpp_debug & MACRO_CALL) && processingData->compiling) {
                 if (cat_line) {
                     cat_line++;
-                    com_cat_line.len[ cat_line]         /* Catenated length */
-                            = com_cat_line.len[ cat_line - 1]
-                                + strlen( infile->buffer) - 1;
+                    processingData->supportProcessingData.com_cat_line.len[ cat_line]         /* Catenated length */
+                            = processingData->supportProcessingData.com_cat_line.len[ cat_line - 1]
+                                + strlen( processingData->infile->buffer) - 1;
                                             /* '-1' for '\n'        */
-                    com_cat_line.last_line = src_line;
+                    processingData->supportProcessingData.com_cat_line.last_line = processingData->src_line;
                 }
             }
             return  sp;                     /* End of comment       */
         case '\n':                          /* Line-crossing comment*/
-            if (keep_spaces)                /* Save the length      */
+            if (processingData->keep_spaces)                /* Save the length      */
                 *sizp = *sizp + (sp - saved_sp) - 1;    /* '-1' for '\n'    */
-            if ((mcpp_debug & MACRO_CALL) && compiling) {
+            if ((processingData->mcpp_debug & MACRO_CALL) && processingData->compiling) {
                                     /* Save location informations   */
                 if (cat_line == 0)  /* First line of catenation     */
-                    com_cat_line.start_line = src_line;
+                    processingData->supportProcessingData.com_cat_line.start_line = processingData->src_line;
                 if (cat_line >= MAX_CAT_LINE - 1) {
                     *sizp = 0;      /* Discard the too long comment */
                     cat_line = 0;
-                    if (warn_level & 4)
+                    if (processingData->warn_level & 4)
                         cwarn(
                         "Too long comment, discarded up to here"    /* _W4_ */
-                                , NULL, 0L, NULL);
+                                , NULL, 0L, NULL, processingData);
                 }
                 cat_line++;
-                com_cat_line.len[ cat_line]
-                        = com_cat_line.len[ cat_line - 1]
-                            + strlen( infile->buffer) - 1;
+                processingData->supportProcessingData.com_cat_line.len[ cat_line]
+                        = processingData->supportProcessingData.com_cat_line.len[ cat_line - 1]
+                            + strlen( processingData->infile->buffer) - 1;
             }
-            if ((saved_sp = sp = get_line( TRUE)) == NULL)
+            if ((saved_sp = sp = get_line( TRUE, processingData)) == NULL)
                 return  NULL;       /* End of file within comment   */
                 /* Never happen, because at_eof() supplement closing*/
-            wrong_line = TRUE;      /* We'll need a #line later     */
+            processingData->wrong_line = TRUE;      /* We'll need a #line later     */
             break;
         default:                            /* Anything else is     */
             break;                          /*   just a character   */
@@ -1922,9 +1912,7 @@ static char *   mcpp_fgets(
     return mfgets( s, size, mf);	// Anima ADD
 }
 
-static char *   get_line(
-    int     in_comment
-)
+static char *   get_line(int in_comment, processing_data_t* processingData)
 /*
  * ANSI (ISO) C: translation phase 1, 2.
  * Get the next logical line from source file.
@@ -1942,99 +1930,99 @@ static char *   get_line(
     char *  ptr;
     int     cat_line = 0;           /* Number of catenated lines    */
 
-    if (infile == NULL)                     /* End of a source file */
+    if (processingData->infile == NULL)                     /* End of a source file */
         return  NULL;
-    ptr = infile->bptr = infile->buffer;
-    if ((mcpp_debug & MACRO_CALL) && src_line == 0) /* Initialize   */
-        com_cat_line.last_line = bsl_cat_line.last_line = 0L;
+    ptr = processingData->infile->bptr = processingData->infile->buffer;
+    if ((processingData->mcpp_debug & MACRO_CALL) && processingData->src_line == 0) /* Initialize   */
+        processingData->supportProcessingData.com_cat_line.last_line = processingData->supportProcessingData.bsl_cat_line.last_line = 0L;
 
-    while (mcpp_fgets( ptr, (int) (infile->buffer + NBUFF - ptr), infile->mf)	// Anima ADD
+    while (mcpp_fgets( ptr, (int) (processingData->infile->buffer + NBUFF - ptr), processingData->infile->mf)	// Anima ADD
             != NULL) {
         /* Translation phase 1  */
-        src_line++;                 /* Gotten next physical line    */
-        if (standard && src_line == std_limits.line_num + 1
-                && (warn_level & 1))
+        processingData->src_line++;                 /* Gotten next physical line    */
+        if (processingData->standard && processingData->src_line == processingData->std_limits.line_num + 1
+                && (processingData->warn_level & 1))
             cwarn( "Line number %.0s\"%ld\" got beyond range"       /* _W1_ */
-                    , NULL, src_line, NULL);
-        if (mcpp_debug & (TOKEN | GETC)) {  /* Dump it to DBG       */
-            mcpp_fprintf( DBG, "\n#line %ld (%s)", src_line, cur_fullname);
-            dump_string( NULL, ptr);
+                    , NULL, processingData->src_line, NULL, processingData);
+        if (processingData->mcpp_debug & (TOKEN | GETC)) {  /* Dump it to DBG       */
+            processingData->mcpp_fprintf( DBG, processingData, "\n#line %ld (%s)", processingData->src_line, processingData->cur_fullname);
+            dump_string( NULL, ptr, processingData);
         }
         len = strlen( ptr);
-        if (NBUFF - 1 <= ptr - infile->buffer + len
+        if (NBUFF - 1 <= ptr - processingData->infile->buffer + len
                 && *(ptr + len - 1) != '\n') {
                 /* The line does not yet end, though the buffer is full.    */
             if (NBUFF - 1 <= len)
                 cfatal( "Too long source line"              /* _F_  */
-                        , NULL, 0L, NULL);
+                        , NULL, 0L, NULL, processingData);
             else
                 cfatal( "Too long logical line"             /* _F_  */
-                        , NULL, 0L, NULL);
+                        , NULL, 0L, NULL, processingData);
         }
         if (len == 0 || *(ptr + len - 1) != '\n')   /* Unterminated source line */	// Anima ADD
             break;
         if (len >= 2 && *(ptr + len - 2) == '\r') {         /* [CR+LF]      */
             *(ptr + len - 2) = '\n';
             *(ptr + --len) = EOS;
-            if (! cr_converted && (warn_level & cr_warn_level)) {
+            if (! cr_converted && (processingData->warn_level & cr_warn_level)) {
                 cwarn( "Converted [CR+LF] to [LF]"  /* _W1_ _W2_    */
-                        , NULL, 0L, NULL);
+                        , NULL, 0L, NULL, processingData);
                 cr_converted = TRUE;
             }
         }
-        if (standard) {
-            if (option_flags.trig)
-                converted = cnv_trigraph( ptr);
-            if (mcpp_mode == POST_STD && option_flags.dig)
-                converted += cnv_digraph( ptr);
+        if (processingData->standard) {
+            if (processingData->option_flags.trig)
+                converted = cnv_trigraph( ptr, processingData);
+            if (processingData->mcpp_mode == POST_STD && processingData->option_flags.dig)
+                converted += cnv_digraph( ptr, processingData);
             if (converted)
                 len = strlen( ptr);
             /* Translation phase 2  */
             len -= 2;
             if (len >= 0) {
-                if ((*(ptr + len) == '\\') && ! last_is_mbchar( ptr, len)) {
+                if ((*(ptr + len) == '\\') && ! last_is_mbchar( ptr, len, processingData)) {
                             /* <backslash><newline> (not MBCHAR)    */
-                    ptr = infile->bptr += len;  /* Splice the lines */
-                    wrong_line = TRUE;
-                    if ((mcpp_debug & MACRO_CALL) && compiling) {
+                    ptr = processingData->infile->bptr += len;  /* Splice the lines */
+                    processingData->wrong_line = TRUE;
+                    if ((processingData->mcpp_debug & MACRO_CALL) && processingData->compiling) {
                                     /* Save location informations   */
                         if (cat_line == 0)      /* First line of catenation */
-                            bsl_cat_line.start_line = src_line;
+                            processingData->supportProcessingData.bsl_cat_line.start_line = processingData->src_line;
                         if (cat_line < MAX_CAT_LINE)
                                     /* Record the catenated length  */
-                            bsl_cat_line.len[ ++cat_line]
-                                    = strlen( infile->buffer) - 2;
+                            processingData->supportProcessingData.bsl_cat_line.len[ ++cat_line]
+                                    = strlen( processingData->infile->buffer) - 2;
                         /* Else ignore  */
                     }
                     continue;
                 }
             }
 #if NBUFF-2 > SLEN90MIN
-            if (ptr - infile->buffer + len + 2 > std_limits.str_len + 1
-                    && (warn_level & 4))    /* +1 for '\n'          */
+            if (ptr - processingData->infile->buffer + len + 2 > processingData->std_limits.str_len + 1
+                    && (processingData->warn_level & 4))    /* +1 for '\n'          */
             cwarn( "Logical source line longer than %.0s%ld bytes"  /* _W4_ */
-                        , NULL, std_limits.str_len, NULL);
+                        , NULL, processingData->std_limits.str_len, NULL, processingData);
 #endif
         }
-        if ((mcpp_debug & MACRO_CALL) && compiling) {
+        if ((processingData->mcpp_debug & MACRO_CALL) && processingData->compiling) {
             if (cat_line && cat_line < MAX_CAT_LINE) {
-                bsl_cat_line.len[ ++cat_line] = strlen( infile->buffer) - 1;
+                processingData->supportProcessingData.bsl_cat_line.len[ ++cat_line] = strlen( processingData->infile->buffer) - 1;
                                 /* Catenated length: '-1' for '\n'  */
-                bsl_cat_line.last_line = src_line;
+                processingData->supportProcessingData.bsl_cat_line.last_line = processingData->src_line;
             }
         }
-        return  infile->bptr = infile->buffer;      /* Logical line */
+        return  processingData->infile->bptr = processingData->infile->buffer;      /* Logical line */
     }
 
     /* End of a (possibly included) source file */
     //if (ferror( infile->fp))		// Anima ADD
-	if (mferror(infile->mf))		// Anima ADD
-        cfatal( "File read error", NULL, 0L, NULL);         /* _F_  */
-    if ((ptr = at_eof( in_comment)) != NULL)        /* Check at end of file */
+	if (mferror(processingData->infile->mf))		// Anima ADD
+        cfatal( "File read error", NULL, 0L, NULL, processingData);         /* _F_  */
+    if ((ptr = at_eof( in_comment, processingData)) != NULL)        /* Check at end of file */
         return  ptr;                        /* Partial line supplemented    */
-    if (option_flags.z) {
-        no_output--;                        /* End of included file */
-        keep_comments = option_flags.c && compiling && !no_output;
+    if (processingData->option_flags.z) {
+        processingData->no_output--;                        /* End of included file */
+        processingData->keep_comments = processingData->option_flags.c && processingData->compiling && !processingData->no_output;
     }
     return  NULL;
 }
@@ -2042,7 +2030,7 @@ static char *   get_line(
 #define TRIOFFSET       10
 
 int     cnv_trigraph(
-    char *      in
+    char *      in, processing_data_t* processingData
 )
 /*
  * Perform in-place trigraph replacement on a physical line.  This was added
@@ -2071,14 +2059,14 @@ int     cnv_trigraph(
         count++;
     }
 
-    if (count && (warn_level & 16))
+    if (count && (processingData->warn_level & 16))
         cwarn( "%.0s%ld trigraph(s) converted"          /* _W16_    */
-                , NULL, (long) count, NULL);
+                , NULL, (long) count, NULL, processingData);
     return  count;
 }
 
 int     cnv_digraph(
-    char *      in
+    char *      in, processing_data_t* processingData
 )
 /*
  * Perform in-place digraph replacement on a physical line.
@@ -2118,14 +2106,14 @@ int     cnv_digraph(
         count++;
     }
 
-    if (count && (warn_level & 16))
+    if (count && (processingData->warn_level & 16))
         cwarn( "%.0s%ld digraph(s) converted"           /* _W16_    */
-                , NULL, (long) count, NULL);
+                , NULL, (long) count, NULL, processingData);
     return  count;
 }
 
 static char *   at_eof(
-    int     in_comment
+    int     in_comment, processing_data_t* processingData
 )
 /*
  * Check the partial line, unterminated comment, unbalanced #if block,
@@ -2141,7 +2129,7 @@ static char *   at_eof(
     const char * const  unterm_macro_format
             = "End of %s within macro call started at line %ld";/* _E_ _W1_ */
     const char * const  input
-            = infile->parent ? "file" : "input";        /* _E_ _W1_ */
+            = processingData->infile->parent ? "file" : "input";        /* _E_ _W1_ */
     const char * const  no_newline
             = "no newline, supplemented newline";       /* _W1_     */
     const char * const  unterm_com
@@ -2152,61 +2140,61 @@ static char *   at_eof(
     size_t  len;
     char *  cp;
 
-    cp = infile->buffer;
+    cp = processingData->infile->buffer;
     len = strlen( cp);
     if (len && *(cp += (len - 1)) != '\n') {
         *++cp = '\n';                       /* Supplement <newline> */
         *++cp = EOS;
-        if (mcpp_mode != OLD_PREP && (warn_level & 1))
-            cwarn( format, input, 0L, no_newline);
-        return  infile->bptr = infile->buffer;
+        if (processingData->mcpp_mode != OLD_PREP && (processingData->warn_level & 1))
+            cwarn( format, input, 0L, no_newline, processingData);
+        return  processingData->infile->bptr = processingData->infile->buffer;
     }
-    if (standard && infile->buffer < infile->bptr) {
+    if (processingData->standard && processingData->infile->buffer < processingData->infile->bptr) {
                             /* No line after <backslash><newline>   */
-        cp = infile->bptr;
+        cp = processingData->infile->bptr;
         *cp++ = '\n';                       /* Delete the \\        */
         *cp = EOS;
-        if (warn_level & 1)
-            cwarn( format, input, 0L, backsl);
-        return  infile->bptr = infile->buffer;
+        if (processingData->warn_level & 1)
+            cwarn( format, input, 0L, backsl, processingData);
+        return  processingData->infile->bptr = processingData->infile->buffer;
     }
     if (in_comment) {               /* End of file within a comment */
-        if (mcpp_mode != OLD_PREP && (warn_level & 1))
-            cwarn( format, input, 0L, unterm_com);
+        if (processingData->mcpp_mode != OLD_PREP && (processingData->warn_level & 1))
+            cwarn( format, input, 0L, unterm_com, processingData);
         /* The partial comment line has been already read by        */
         /* read_a_comment(), so supplement the  next line.          */
-        strcpy( infile->buffer, "*/\n");
-        return  infile->bptr = infile->buffer;
+        strcpy( processingData->infile->buffer, "*/\n");
+        return  processingData->infile->bptr = processingData->infile->buffer;
     }
 
-    if (infile->initif < ifptr) {
-        IFINFO *    ifp = infile->initif + 1;
-        if (standard) {
-            cerror( unterm_if_format, input, ifp->ifline, NULL);
-            ifptr = infile->initif;         /* Clear information of */
-            compiling = ifptr->stat;        /*   erroneous grouping */
-        } else if (mcpp_mode == KR && (warn_level & 1)) {
-            cwarn( unterm_if_format, input, ifp->ifline, NULL);
+    if (processingData->infile->initif < processingData->ifptr) {
+        IFINFO *    ifp = processingData->infile->initif + 1;
+        if (processingData->standard) {
+            cerror( unterm_if_format, input, ifp->ifline, NULL, processingData);
+            processingData->ifptr = processingData->infile->initif;         /* Clear information of */
+            processingData->compiling = processingData->ifptr->stat;        /*   erroneous grouping */
+        } else if (processingData->mcpp_mode == KR && (processingData->warn_level & 1)) {
+            cwarn( unterm_if_format, input, ifp->ifline, NULL, processingData);
         }
     }
 
-    if (macro_line != 0 && macro_line != MACRO_ERROR
-            && ((mcpp_mode == STD && in_getarg) || ! standard)) {
-        if (standard) {
-            cerror( unterm_macro_format, input, macro_line, NULL);
-            macro_line = MACRO_ERROR;
-        } else if (warn_level & 1) {
-            cwarn( unterm_macro_format, input, macro_line, NULL);
+    if (processingData->macro_line != 0 && processingData->macro_line != MACRO_ERROR
+            && ((processingData->mcpp_mode == STD && processingData->in_getarg) || ! processingData->standard)) {
+        if (processingData->standard) {
+            cerror( unterm_macro_format, input, processingData->macro_line, NULL, processingData);
+            processingData->macro_line = MACRO_ERROR;
+        } else if (processingData->warn_level & 1) {
+            cwarn( unterm_macro_format, input, processingData->macro_line, NULL, processingData);
         }
     }
 
-    if (in_asm && mcpp_mode == KR && (warn_level & 1))
-        cwarn( unterm_asm_format, input, in_asm, NULL);
+    if (processingData->in_asm && processingData->mcpp_mode == KR && (processingData->warn_level & 1))
+        cwarn( unterm_asm_format, input, processingData->in_asm, NULL, processingData);
 
     return  NULL;
 }
 
-void    unget_ch( void)
+void    unget_ch(processing_data_t* processingData)
 /*
  * Back the pointer to reread the last character.  Fatal error (code bug)
  * if we back too far.  unget_ch() may be called, without problems, at end of
@@ -2214,37 +2202,38 @@ void    unget_ch( void)
  * call unget_string().
  */
 {
-    if (in_token) {
-        infile->bptr--;
+    if (processingData->supportProcessingData.in_token) {
+        processingData->infile->bptr--;
         return;
     }
 
-    if (infile != NULL) {
-        if (mcpp_mode == POST_STD && infile->mf) {		// Anima ADD
-            switch (insert_sep) {
+    if (processingData->infile != NULL) {
+        if (processingData->mcpp_mode == POST_STD && processingData->infile->mf) {		// Anima ADD
+            switch (processingData->insert_sep) {
             case INSERTED_SEP:  /* Have just read an inserted separator */
-                insert_sep = INSERT_SEP;
+                processingData->insert_sep = INSERT_SEP;
                 return;
             case INSERT_SEP:
                 cfatal( "Bug: unget_ch() just after scan_token()"   /* _F_  */
-                        , NULL, 0L, NULL);
+                        , NULL, 0L, NULL, processingData);
                 break;
             default:
                 break;
             }
         }
-        --infile->bptr;
-        if (infile->bptr < infile->buffer)      /* Shouldn't happen */
-            cfatal( "Bug: Too much pushback", NULL, 0L, NULL);      /* _F_  */
+        --processingData->infile->bptr;
+        if (processingData->infile->bptr < processingData->infile->buffer)      /* Shouldn't happen */
+            cfatal( "Bug: Too much pushback", NULL, 0L, NULL, processingData);      /* _F_  */
     }
 
-    if (mcpp_debug & GETC)
-        dump_unget( "after unget");
+    if (processingData->mcpp_debug & GETC)
+        dump_unget( "after unget", processingData);
 }
 
 FILEINFO *  unget_string(
     const char *    text,               /* Text to unget            */
-    const char *    name                /* Name of the macro, if any*/
+    const char *    name,               /* Name of the macro, if any*/
+    processing_data_t* processingData
 )
 /*
  * Push a string back on the input stream.  This is done by treating
@@ -2258,7 +2247,7 @@ FILEINFO *  unget_string(
         size = strlen( text) + 1;
     else
         size = 1;
-    file = get_file( name, NULL, NULL, size, FALSE);
+    file = get_file( name, NULL, NULL, size, FALSE, processingData);
     if (text)
         memcpy( file->buffer, text, size);
     else
@@ -2287,7 +2276,8 @@ FILEINFO *  get_file(
     const char *    src_dir,                /* Source file directory*/
     const char *    fullname,               /* Full path list       */
     size_t      bufsize,                    /* Line buffer size     */
-    int         include_opt         /* Specified by -include opt (for GCC)  */
+    int         include_opt,         /* Specified by -include opt (for GCC)  */
+    processing_data_t* processingData
 )
 /*
  * Common FILEINFO buffer initialization for a new file or macro.
@@ -2302,8 +2292,8 @@ FILEINFO *  get_file(
     file->line = 0L;                        /* (Not used just yet)  */
     file->mf = NULL;                        /* No file yet          */		// Anima ADD
     file->pos = 0L;                         /* No pos to remember   */
-    file->parent = infile;                  /* Chain files together */
-    file->initif = ifptr;                   /* Initial ifstack      */
+    file->parent = processingData->infile;                  /* Chain files together */
+    file->initif = processingData->ifptr;                   /* Initial ifstack      */
     file->include_opt = include_opt;        /* Specified by -include*/
     file->dirp = NULL;                      /* No include dir yet   */
     file->real_fname = name;                /* Save file/macro name */
@@ -2325,15 +2315,15 @@ FILEINFO *  get_file(
     file->last_fputs = mcpp_lib_fputs;
     file->last_fprintf = mcpp_lib_fprintf;
 #endif
-    if (infile != NULL) {                   /* If #include file     */
-        infile->line = src_line;            /* Save current line    */
+    if (processingData->infile != NULL) {                   /* If #include file     */
+        processingData->infile->line = processingData->src_line;            /* Save current line    */
 #if MCPP_LIB
-        infile->last_fputc = mcpp_fputc;
-        infile->last_fputs = mcpp_fputs;
-        infile->last_fprintf = mcpp_fprintf;
+        infile->last_fputc = processingData->mcpp_fputc;
+        infile->last_fputs = processingData->mcpp_fputs;
+        infile->last_fprintf = processingData->mcpp_fprintf;
 #endif
     }
-    infile = file;                          /* New current file     */
+    processingData->infile = file;                          /* New current file     */
 
     return  file;                           /* All done.            */
 }
@@ -2352,9 +2342,9 @@ char *
     char *      result;
 
     if ((result = (char *) malloc( size)) == NULL) {
-        if (mcpp_debug & MEMORY)
-            print_heap();
-       cfatal( out_of_memory, NULL, (long) size, NULL);
+        // ANIMA ADD if (mcpp_debug & MEMORY)
+        // ANIMA ADD     print_heap();
+       // ANIMA ADD cfatal( out_of_memory, NULL, (long) size, NULL);
     }
     return  result;
 }
@@ -2372,15 +2362,16 @@ char *  (xrealloc)(
     if ((result = (char *) realloc( ptr, size)) == NULL && size != 0) {
         /* 'size != 0' is necessary to cope with some               */
         /*   implementation of realloc( ptr, 0) which returns NULL. */
-        if (mcpp_debug & MEMORY)
-            print_heap();
-        cfatal( out_of_memory, NULL, (long) size, NULL);
+        // ANIMA ADD if (mcpp_debug & MEMORY)
+        // ANIMA ADD     print_heap();
+        // ANIMA ADD cfatal( out_of_memory, NULL, (long) size, NULL);
     }
     return  result;
 }
 
 LINE_COL *  get_src_location(
-    LINE_COL *  p_line_col          /* Line and column on phase 4   */
+    LINE_COL *  p_line_col,          /* Line and column on phase 4   */
+    processing_data_t* processingData
 )
 /*
  * Convert line-column datum of just after translation phase 3 into that of
@@ -2404,7 +2395,7 @@ LINE_COL *  get_src_location(
     col = p_line_col->col;
 
     for (i = 0; i <= 1; i++) {
-        l_col_p = i ? & bsl_cat_line : & com_cat_line;
+        l_col_p = i ? & processingData->supportProcessingData.bsl_cat_line : & processingData->supportProcessingData.com_cat_line;
         if (l_col_p->last_line != line)
             continue;
         /* Else just catenated line */
@@ -2427,7 +2418,8 @@ LINE_COL *  get_src_location(
 
 static void put_line(
     char *  out,
-    FILE *  fp
+    FILE *  fp,
+    processing_data_t* processingData
 )
 /*
  * Put out a logical source line.
@@ -2438,7 +2430,7 @@ static void put_line(
 
     while ((c = *out++) != EOS) {
         if (c != COM_SEP)           /* Skip 0-length comment        */
-            mcpp_fputc( c, FP2DEST( fp));
+            processingData->mcpp_fputc( c, FP2DEST( fp, processingData), processingData);
     }
 }
 
@@ -2447,7 +2439,8 @@ static void do_msg(
     const char *    format,         /* Format for the error message */
     const char *    arg1,           /* String arg. for the message  */
     long            arg2,           /* Integer argument             */
-    const char *    arg3            /* Second string argument       */
+    const char *    arg3,           /* Second string argument       */
+    processing_data_t* processingData
 )
 /*
  * Print filenames, macro names, line numbers and error messages.
@@ -2465,7 +2458,7 @@ static void do_msg(
     int         c;
     int         ind;
 
-    fflush( fp_out);                /* Synchronize output and diagnostics   */
+    fflush( processingData->fp_out);                /* Synchronize output and diagnostics   */
     arg_s[ 0] = arg1;  arg_s[ 1] = arg3;
 
     for (i = 0; i < 2; i++) {   /* Convert special characters to visible    */
@@ -2484,24 +2477,24 @@ static void do_msg(
         while ((c = *sp++) != EOS) {
             switch (c) {
             case TOK_SEP:
-                if (mcpp_mode == OLD_PREP)      /* COM_SEP          */
+                if (processingData->mcpp_mode == OLD_PREP)      /* COM_SEP          */
                     break;              /* Skip magic characters    */
                 /* Else fall through    */
             case RT_END:
             case CAT:
             case ST_QUOTE:
             case DEF_MAGIC:
-                if (! standard)
+                if (! processingData->standard)
                     *tp++ = ' ';
                 break;                  /* Skip the magic characters*/
             case IN_SRC:
-                if (! standard)
+                if (! processingData->standard)
                     *tp++ = ' ';
-                if ((mcpp_debug & MACRO_CALL) && ! in_directive)
+                if ((processingData->mcpp_debug & MACRO_CALL) && ! processingData->in_directive)
                     sp += 2;            /* Skip two more bytes      */
                 break;
             case MAC_INF:
-                if (mcpp_mode != STD) {
+                if (processingData->mcpp_mode != STD) {
                     *tp++ = ' ';
                     /* Illegal control character, convert to a space*/
                 } else {
@@ -2513,13 +2506,13 @@ static void do_msg(
                         sp += 2;
                         break;
                     case MAC_ARG_END    :
-                        if (! option_flags.v)
+                        if (! processingData->option_flags.v)
                             break;
                         else
                             sp++;
                             /* Fall through */
                     case MAC_CALL_END   :
-                        if (option_flags.v)
+                        if (processingData->option_flags.v)
                             sp += 2;
                         break;
                     }
@@ -2540,26 +2533,26 @@ static void do_msg(
     }
 
     /* Print source location and diagnostic */
-    file = infile;
+    file = processingData->infile;
     while (file != NULL && (file->mf == NULL || file->mf == (MFILE *)-1))		// Anima ADD
         file = file->parent;                        /* Skip macro   */
     if (file != NULL) {
-        file->line = src_line;
-        mcpp_fprintf( ERR, "%s:%ld: %s: ", cur_fullname, src_line, severity);
+        file->line = processingData->src_line;
+        processingData->mcpp_fprintf( ERR, processingData, "%s:%ld: %s: ", processingData->cur_fullname, processingData->src_line, severity);
     }
-    mcpp_fprintf( ERR, format, arg_t[ 0], arg2, arg_t[ 1]);
-    mcpp_fputc( '\n', ERR);
-    if (option_flags.no_source_line)
+    processingData->mcpp_fprintf( ERR, processingData, format, arg_t[ 0], arg2, arg_t[ 1]);
+    processingData->mcpp_fputc( '\n', ERR, processingData);
+    if (processingData->option_flags.no_source_line)
         goto  free_arg;
 
     /* Print source line, includers and expanding macros    */
-    file = infile;
+    file = processingData->infile;
     if (file != NULL && file->mf != NULL) {										// Anima ADD
-        if (mcpp_mode == OLD_PREP) {
-            mcpp_fputs( "    ", ERR);
-            put_line( file->buffer, fp_err);
+        if (processingData->mcpp_mode == OLD_PREP) {
+            processingData->mcpp_fputs( "    ", ERR, processingData);
+            put_line( file->buffer, processingData->fp_err, processingData);
         } else {
-            mcpp_fprintf( ERR, "    %s", file->buffer);
+            processingData->mcpp_fprintf( ERR, processingData, "    %s", file->buffer);
                                             /* Current source line  */
         }
         file = file->parent;
@@ -2567,54 +2560,54 @@ static void do_msg(
     while (file != NULL) {                  /* Print #includes, too */
         if (file->mf == NULL) {             /* Macro                */			// Anima ADD
             if (file->filename) {
-                defp = look_id( file->filename);
+                defp = look_id( file->filename, processingData);
                 if ((defp->nargs > DEF_NOARGS_STANDARD)
                     && ! (file->parent && file->parent->filename
                         && str_eq( file->filename, file->parent->filename)))
                         /* If the name is not duplicate of parent   */
-                    dump_a_def( "    macro", defp, FALSE, TRUE, fp_err);
+                    dump_a_def( "    macro", defp, FALSE, TRUE, processingData->fp_err, processingData);
             }
         } else {                            /* Source file          */
             if (file->buffer[ 0] == '\0')
                 strcpy( file->buffer, "\n");
-            if (mcpp_mode != OLD_PREP) {
-                mcpp_fprintf( ERR, "    from %s: %ld:    %s",
+            if (processingData->mcpp_mode != OLD_PREP) {
+                processingData->mcpp_fprintf( ERR, processingData, "    from %s: %ld:    %s",
                     file->line ? file->full_fname       /* Full-path-list   */
                         : "<stdin>",        /* Included by -include */
                     file->line,             /* Current line number  */
                     file->buffer);          /* The source line      */
             } else {
-                mcpp_fprintf( ERR, "    from %s: %ld:    ", file->full_fname
+                processingData->mcpp_fprintf( ERR, processingData, "    from %s: %ld:    ", file->full_fname
                         , file->line);
-                put_line( file->buffer, fp_err);
+                put_line( file->buffer, processingData->fp_err, processingData);
             }
         }
         file = file->parent;
     }
 
-    if (! macro_name)
+    if (! processingData->macro_name)
         goto  free_arg;
     /* Additional information of macro definitions  */
-    expanding_macro[ 0].name = macro_name;
-    for (ind = 0; ind <= exp_mac_ind; ind++) {
+    processingData->supportProcessingData.expanding_macro[ 0].name = processingData->macro_name;
+    for (ind = 0; ind <= processingData->supportProcessingData.exp_mac_ind; ind++) {
         int         ind_done;
 
         for (ind_done = 0; ind_done < ind; ind_done++)
-            if (str_eq( expanding_macro[ ind].name
-                    , expanding_macro[ ind_done].name))
+            if (str_eq( processingData->supportProcessingData.expanding_macro[ ind].name
+                    , processingData->supportProcessingData.expanding_macro[ ind_done].name))
                 break;                      /* Already reported     */
         if (ind_done < ind)
             continue;
-        for (file = infile; file; file = file->parent)
+        for (file = processingData->infile; file; file = file->parent)
             if (file->mf == NULL && file->filename								// Anima ADD
-                    && str_eq( expanding_macro[ ind].name, file->filename))
+                    && str_eq( processingData->supportProcessingData.expanding_macro[ ind].name, file->filename))
                 break;                      /* Already reported     */
         if (file)
             continue;
-        if ((defp = look_id( expanding_macro[ ind].name)) != NULL) {
+        if ((defp = look_id( processingData->supportProcessingData.expanding_macro[ ind].name, processingData)) != NULL) {
             if (defp->nargs <= DEF_NOARGS_STANDARD)
                 continue;                   /* Standard predefined  */
-            dump_a_def( "    macro", defp, FALSE, TRUE, fp_err);
+            dump_a_def( "    macro", defp, FALSE, TRUE, processingData->fp_err, processingData);
             /* Macro already read over  */
         }
     }
@@ -2628,46 +2621,50 @@ void    cfatal(
     const char *    format,
     const char *    arg1,
     long    arg2,
-    const char *    arg3
+    const char *    arg3,
+    processing_data_t* processingData
 )
 /*
  * A real disaster.
  */
 {
-    do_msg( "fatal error", format, arg1, arg2, arg3);
-    longjmp( error_exit, -1);
+    do_msg( "fatal error", format, arg1, arg2, arg3, processingData);
+    longjmp( processingData->error_exit, -1);
 }
 
 void    cerror(
     const char *    format,
     const char *    arg1,
     long    arg2,
-    const char *    arg3
+    const char *    arg3,
+    processing_data_t* processingData
 )
 /*
  * Print a error message.
  */
 {
-    do_msg( "error", format, arg1, arg2, arg3);
-    errors++;
+    do_msg( "error", format, arg1, arg2, arg3, processingData);
+    processingData->errors++;
 }
 
 void    cwarn(
     const char *    format,
     const char *    arg1,
     long    arg2,
-    const char *    arg3
+    const char *    arg3,
+    processing_data_t* processingData
 )
 /*
  * Maybe an error.
  */
 {
-    do_msg( "warning", format, arg1, arg2, arg3);
+    do_msg( "warning", format, arg1, arg2, arg3, processingData);
 }
 
 void    dump_string(
     const char *    why,
-    const char *    text
+    const char *    text,
+    processing_data_t* processingData
 )
 /*
  * Dump text readably.
@@ -2680,11 +2677,11 @@ void    dump_string(
     int     c, c1, c2;
 
     if (why != NULL)
-        mcpp_fprintf( DBG, " (%s)", why);
-    mcpp_fputs( " => ", DBG);
+        processingData->mcpp_fprintf( DBG, processingData, " (%s)", why);
+    processingData->mcpp_fputs( " => ", DBG, processingData);
 
     if (text == NULL) {
-        mcpp_fputs( "NULL", DBG);
+        processingData->mcpp_fputs( "NULL", DBG, processingData);
         return;
     }
 
@@ -2694,36 +2691,36 @@ void    dump_string(
         switch (c) {
         case MAC_PARM:
             c = *cp++ & UCHARMAX;       /* Macro parameter number   */
-            mcpp_fprintf( DBG, "<%d>", c);
+            processingData->mcpp_fprintf(DBG, processingData, "<%d>", c);
             break;
         case MAC_INF:
-            if (! (mcpp_mode == STD && (mcpp_debug & MACRO_CALL)))
+            if (! (processingData->mcpp_mode == STD && (processingData->mcpp_debug & MACRO_CALL)))
                 goto  no_magic;
             /* Macro informations inserted by -K option */
             c2 = *cp++ & UCHARMAX;
-            if (option_flags.v || c2 == MAC_CALL_START
+            if (processingData->option_flags.v || c2 == MAC_CALL_START
                     || c2 == MAC_ARG_START) {
                 c = ((*cp++ & UCHARMAX) - 1) * UCHARMAX;
                 c += (*cp++ & UCHARMAX) - 1;
             }
             switch (c2) {
             case MAC_CALL_START:
-                mcpp_fprintf( DBG, "<MAC%d>", c);
+                processingData->mcpp_fprintf( DBG, processingData, "<MAC%d>", c);
                 break;
             case MAC_CALL_END:
-                if (option_flags.v)
-                    mcpp_fprintf( DBG, "<MAC_END%d>", c);
+                if (processingData->option_flags.v)
+                    processingData->mcpp_fprintf( DBG, processingData, "<MAC_END%d>", c);
                 else
                     chr = "<MAC_END>";
                 break;
             case MAC_ARG_START:
                 c1 = *cp++ & UCHARMAX;
-                mcpp_fprintf( DBG, "<MAC%d:ARG%d>", c, c1 - 1);
+                processingData->mcpp_fprintf( DBG, processingData, "<MAC%d:ARG%d>", c, c1 - 1);
                 break;
             case MAC_ARG_END:
-                if (option_flags.v) {
+                if (processingData->option_flags.v) {
                     c1 = *cp++ & UCHARMAX;
-                    mcpp_fprintf( DBG, "<ARG_END%d-%d>", c, c1 - 1);
+                    processingData->mcpp_fprintf( DBG, processingData, "<ARG_END%d-%d>", c, c1 - 1);
                 } else {
                     chr = "<ARG_END>";
                 }
@@ -2731,65 +2728,66 @@ void    dump_string(
             }
             break;
         case DEF_MAGIC:
-            if (standard) {
+            if (processingData->standard) {
                 chr = "<MAGIC>";
                 break;
             }       /* Else fall through    */
         case CAT:
-            if (standard) {
+            if (processingData->standard) {
                 chr = "##";
                 break;
             }       /* Else fall through    */
         case ST_QUOTE:
-            if (standard) {
+            if (processingData->standard) {
                 chr = "#";
                 break;
             }       /* Else fall through    */
         case RT_END:
-            if (standard) {
+            if (processingData->standard) {
                 chr = "<RT_END>";
                 break;
             }       /* Else fall through    */
         case IN_SRC:
-            if (standard) {
-                if ((mcpp_debug & MACRO_CALL) && ! in_directive) {
+            if (processingData->standard) {
+                if ((processingData->mcpp_debug & MACRO_CALL) && ! processingData->in_directive) {
                     int     num;
                     num = ((*cp++ & UCHARMAX) - 1) * UCHARMAX;
                     num += (*cp++ & UCHARMAX) - 1;
-                    mcpp_fprintf( DBG, "<SRC%d>", num);
+                    processingData->mcpp_fprintf( DBG, processingData, "<SRC%d>", num);
                 } else {
                     chr = "<SRC>";
                 }
             } else {                        /* Control character    */
-                mcpp_fprintf( DBG, "<^%c>", c + '@');
+                processingData->mcpp_fprintf( DBG, processingData, "<^%c>", c + '@');
             }
             break;
         case TOK_SEP:
-            if (mcpp_mode == STD) {
+            if (processingData->mcpp_mode == STD) {
                 chr = "<TSEP>";
                 break;
-            } else if (mcpp_mode == OLD_PREP) {     /* COM_SEP      */
+            } else if (processingData->mcpp_mode == OLD_PREP) {     /* COM_SEP      */
                 chr = "<CSEP>";
                 break;
             }       /* Else fall through    */
         default:
 no_magic:
             if (c < ' ')
-                mcpp_fprintf( DBG, "<^%c>", c + '@');
+                processingData->mcpp_fprintf( DBG, processingData, "<^%c>", c + '@');
             else
-                mcpp_fputc( c, DBG);
+                processingData->mcpp_fputc( c, DBG, processingData);
             break;
         }
 
         if (chr)
-            mcpp_fputs( chr, DBG);
+            processingData->mcpp_fputs( chr, DBG, processingData);
     }
 
-    mcpp_fputc( '\n', DBG);
+    processingData->mcpp_fputc( '\n', DBG, processingData);
 }
 
 void    dump_unget(
-    const char *    why
+    const char *    why,
+    processing_data_t* processingData
 )
 /*
  * Dump all ungotten junk (pending macros and current input lines).
@@ -2797,21 +2795,22 @@ void    dump_unget(
 {
     const FILEINFO *    file;
 
-    mcpp_fputs( "dump of pending input text", DBG);
+    processingData->mcpp_fputs( "dump of pending input text", DBG, processingData);
     if (why != NULL) {
-        mcpp_fputs( "-- ", DBG);
-        mcpp_fputs( why, DBG);
+        processingData->mcpp_fputs( "-- ", DBG, processingData);
+        processingData->mcpp_fputs( why, DBG, processingData);
     }
-    mcpp_fputc( '\n', DBG);
+    processingData->mcpp_fputc( '\n', DBG, processingData);
 
-    for (file = infile; file != NULL; file = file->parent)
+    for (file = processingData->infile; file != NULL; file = file->parent)
         dump_string( file->real_fname ? file->real_fname
-                : file->filename ? file->filename : "NULL", file->bptr);
+                : file->filename ? file->filename : "NULL", file->bptr, processingData);
 }
 
 static void dump_token(
     int     token_type,
-    const char *    cp                              /* Token        */
+    const char *    cp,                              /* Token        */
+    processing_data_t* processingData
 )
 /*
  * Dump a token.
@@ -2821,7 +2820,7 @@ static void dump_token(
             = { "NAM", "NUM", "STR", "WSTR", "CHR", "WCHR", "OPE", "SPE"
             , "SEP", };
 
-    mcpp_fputs( "token", DBG);
-    dump_string( t_type[ token_type - NAM], cp);
+    processingData->mcpp_fputs( "token", DBG, processingData);
+    dump_string( t_type[ token_type - NAM], cp, processingData);
 }
 

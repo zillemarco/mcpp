@@ -278,10 +278,10 @@ typedef struct ifinfo {
 
 #define compiling       ifstack[0].stat
 
-#define FP2DEST(fp) \
-    (fp == fp_out) ? OUT : \
-    ((fp == fp_err) ? ERR : \
-    ((fp == fp_debug) ? DBG : \
+#define FP2DEST(fp, pd) \
+    (fp == pd->fp_out) ? OUT : \
+    ((fp == pd->fp_err) ? ERR : \
+    ((fp == pd->fp_debug) ? DBG : \
     ((OUTDEST) -1)))
 
 /* VAL_SIGN structure stores information about evaluated number.    */
@@ -326,193 +326,497 @@ typedef struct line_col {
  */
 
 /* The minimum translation limits specified by the Standards.       */
-extern struct std_limits_ {
-        long    str_len;            /* Least maximum of string len. */
-        size_t  id_len;             /* Least maximum of ident len.  */
-        int     n_mac_pars;         /* Least maximum of num of pars.*/
-        int     exp_nest;           /* Least maximum of expr nest   */
-        int     blk_nest;           /* Least maximum of block nest  */
-        int     inc_nest;           /* Least maximum of include nest*/
-        long    n_macro;            /* Least maximum of num of macro*/
-        long    line_num;           /* Maximum source line number   */
-} std_limits;    
-/* The boolean flags specified by the execution options.    */
-extern struct option_flags_ {
-        int     c;                  /* -C option (keep comments)    */
-        int     k;                  /* -k option (keep white spaces)*/
-        int     z;      /* -z option (no-output of included file)   */
-        int     p;                  /* -P option (no #line output)  */
-        int     q;                  /* -Q option (diag to mcpp.err) */
-        int     v;                  /* -v option (verbose)          */
-        int     trig;               /* -3 option (toggle trigraphs) */
-        int     dig;                /* -2 option (toggle digraphs)  */
-        int     lang_asm;           /* -a option (assembler source) */
-        int     no_source_line;     /* Do not output line in diag.  */
-        int     dollar_in_name;     /* Allow $ in identifiers       */
-} option_flags;
+typedef struct std_limits_ {
+    long    str_len;            /* Least maximum of string len. */
+    size_t  id_len;             /* Least maximum of ident len.  */
+    int     n_mac_pars;         /* Least maximum of num of pars.*/
+    int     exp_nest;           /* Least maximum of expr nest   */
+    int     blk_nest;           /* Least maximum of block nest  */
+    int     inc_nest;           /* Least maximum of include nest*/
+    long    n_macro;            /* Least maximum of num of macro*/
+    long    line_num;           /* Maximum source line number   */
+} std_limits_t;
 
-extern int      mcpp_mode;          /* Mode of preprocessing        */
-extern int      stdc_val;           /* Value of __STDC__            */
-extern long     stdc_ver;           /* Value of __STDC_VERSION__    */
-extern long     cplus_val;          /* Value of __cplusplus for C++ */
-extern int      stdc2;      /* cplus_val or (stdc_ver >= 199901L)   */
-extern int      stdc3;      /* (stdc_ver or cplus_val) >= 199901L   */
-extern int      standard;           /* mcpp_mode is STD or POST_STD */
-extern int      std_line_prefix;    /* #line in C source style      */
-extern int      warn_level;         /* Level of warning             */
-extern int      errors;             /* Error counter                */
-extern long     src_line;           /* Current source line number   */
-extern int      wrong_line;         /* Force #line to compiler      */
-extern int      newlines;           /* Count of blank lines         */
-extern int      keep_comments;      /* Don't remove comments        */
-extern int      keep_spaces;        /* Don't remove white spaces    */
-extern int      include_nest;       /* Nesting level of #include    */
-extern const char *     null;       /* "" string for convenience    */
-extern const char **    inc_dirp;   /* Directory of #includer       */
-extern const char *     cur_fname;  /* Current source file name     */
-extern int      no_output;          /* Don't output included file   */
-extern int      in_directive;       /* In process of #directive     */
-extern int      in_define;          /* In #define line              */
-extern int      in_getarg;          /* Collecting arguments of macro*/
-extern int      in_include;         /* In #include line             */
-extern int      in_if;              /* In #if and non-skipped expr. */
-extern long     macro_line;         /* Line number of macro call    */
-extern char *   macro_name;         /* Currently expanding macro    */
-extern int      openum;             /* Number of operator or punct. */
-extern IFINFO *     ifptr;          /* -> current ifstack item      */
-extern FILEINFO *   infile;         /* Current input file or macro  */
-//extern FILE *   fp_in;              /* Input stream to preprocess   */		// Anima ADD
-extern FILE *   fp_out;             /* Output stream preprocessed   */
-extern FILE *   fp_err;             /* Diagnostics stream           */
-extern FILE *   fp_debug;           /* Debugging information stream */
-extern int      insert_sep;         /* Inserted token separator flag*/
-extern int      mkdep;              /* Output source file dependency*/
-extern int      mbchar;             /* Encoding of multi-byte char  */
-extern int      mbchk;              /* Possible multi-byte char     */
-extern int      bsl_in_mbchar;      /* 2nd byte of mbchar has '\\'  */
-extern int      bsl_need_escape;/* '\\' in mbchar should be escaped */
-extern int      mcpp_debug;         /* Class of debug information   */
-extern long     in_asm;             /* In #asm - #endasm block      */
-extern jmp_buf  error_exit;         /* Exit on fatal error          */
-extern char *   cur_fullname;       /* Full name of current source  */
-extern short *  char_type;          /* Character classifier         */
-extern char *   workp;              /* Free space in work[]         */
-extern char * const     work_end;   /* End of work[] buffer         */
-extern char     identifier[];       /* Lastly scanned name          */
-extern IFINFO   ifstack[];          /* Information of #if nesting   */
-extern char     work_buf[];
-        /* Temporary buffer for directive line and macro expansion  */
+/* The boolean flags specified by the execution options.    */
+typedef struct option_flags_ {
+    int     c;                  /* -C option (keep comments)    */
+    int     k;                  /* -k option (keep white spaces)*/
+    int     z;      /* -z option (no-output of included file)   */
+    int     p;                  /* -P option (no #line output)  */
+    int     q;                  /* -Q option (diag to mcpp.err) */
+    int     v;                  /* -v option (verbose)          */
+    int     trig;               /* -3 option (toggle trigraphs) */
+    int     dig;                /* -2 option (toggle digraphs)  */
+    int     lang_asm;           /* -a option (assembler source) */
+    int     no_source_line;     /* Do not output line in diag.  */
+    int     dollar_in_name;     /* Allow $ in identifiers       */
+} option_flags_t;
+
+
+/*
+ * Global work_buf[] are used to store #define parameter lists and
+ * parms[].name point to them.
+ * 'nargs' contains the actual number of parameters stored.
+ */
+typedef struct param_name_
+{
+    char *name; /* -> Start of each parameter   */
+    size_t len; /* Length of parameter name     */
+} param_name_t;
+
+typedef struct params_data_
+{
+    param_name_t parms[NMACPARS];
+    int nargs;                                    /* Number of parameters         */
+    char *token_p;                                /* Pointer to the token scanned */
+    char *repl_base;                              /* Base of buffer for repl-text */
+    char *repl_end;                               /* End of buffer for repl-text  */
+    
+    #if COMPILER == GNUC
+        int gcc2_va_arg; /* GCC2-spec variadic macro     */
+    #endif
+} params_data_t;
+
+typedef struct location
+{                     /* Where macro or arg locate    */
+    long start_line;  /* Beginning at 1   */
+    size_t start_col; /* Beginning at 0   */
+    long end_line;
+    size_t end_col;
+} LOCATION;
+typedef struct magic_seq
+{                      /* Data of a sequence inserted between tokens   */
+    char *magic_start; /* First MAC_INF sequence   */
+    char *magic_end;   /* End of last MAC_INF seq  */
+    int space;         /* Space succeeds or not    */
+} MAGIC_SEQ;
+
+/* Variables for macro notification mode    */
+typedef struct macro_inf
+{                       /* Informations of a macro  */
+    const DEFBUF *defp; /* Definition of the macro  */
+    char *args;         /* Arguments, if any        */
+    int num_args;       /* Number of real arguments */
+    int recur;          /* Recurrence of this macro */
+    LOCATION locs;      /* Location of macro call   */
+    LOCATION *loc_args; /* Location of arguments    */
+} MACRO_INF;
+
+typedef struct macro_replace_data
+{
+    const DEFBUF *def; /* Macro definition             */
+    int read_over;     /* Has read over repl-list      */
+    /* 'read_over' is never used in POST_STD mode and in compat_mode*/
+} macro_replace_data_t;     /* Macros currently replacing   */
+
+
+typedef struct macros_data_
+{
+    MACRO_INF *mac_inf;
+    int max_mac_num;    /* Current num of elements in mac_inf[] */
+    int mac_num;        /* Index into mac_inf[]     */
+    LOCATION *in_src;   /* Location of identifiers in macro arguments   */
+    int max_in_src_num; /* Current num of elements in in_src[]  */
+    int in_src_num;     /* Index into in_src[]      */
+    int trace_macro;    /* Enable to trace macro infs   */
+    int has_pragma; /* Flag of _Pragma() operator       */
+    macro_replace_data_t replacing[RESCAN_LIMIT];
+    
+    int compat_mode;
+    /* Expand recursive macro more than Standard (for compatibility with GNUC)  */
+    #if COMPILER == GNUC
+    int ansi; /* __STRICT_ANSI__ flag     */
+    #endif
+
+    int rescan_level; /* Times of macro rescan    */
+    jmp_buf jump;
+    char *arglist_pre[NMACPARS]; /* Pointers to args     */
+} macros_data_t;
+
+#define EXP_MAC_IND_MAX     16
+#define MAX_CAT_LINE        256
+
+/* Information of current expanding macros for diagnostic   */
+typedef struct expanding_macro_ {
+    const char *    name;       /* Name of the macro just expanded  */
+    int             to_be_freed;    /* Name should be freed later   */
+} expanding_macro_t;
+
+/* Information on line catenated by <backslash><newline>    */
+/* and by line-crossing comment.  This is for -K option.    */
+typedef struct catenated_line {
+    long    start_line;         /* Starting line of catenation      */
+    long    last_line;          /* Ending line of catanation        */
+    size_t  len[ MAX_CAT_LINE + 1];
+                        /* Length of successively catenated lines   */
+} CAT_LINE;
+
+typedef struct support_data_ {
+    expanding_macro_t expanding_macro[EXP_MAC_IND_MAX];
+
+    int  exp_mac_ind;    /* Index into expanding_macro[] */
+    int  in_token;       /* For token scanning functions */
+    int  in_string;      /* For get_ch() and parse_line()*/
+    int  squeezews;
+    CAT_LINE bsl_cat_line; /* Datum on the last catenated line by <backslash><newline> */
+    CAT_LINE com_cat_line; /* Datum on the last catenated line by a line-crossing comment  */
+
+    int dollar_diagnosed;   /* Flag of diagnosing '$'   */
+
+} support_data_t;
+
+typedef struct inc_list {       /* List of directories or files     */
+    char *      name;           /* Filename or directory-name       */
+    size_t      len;                    /* Length of 'name'         */
+} INC_LIST;
+
+#define INIT_NUM_INCLUDE    32          /* Initial number of incdir[]   */
+#define INIT_NUM_FNAMELIST  256         /* Initial number of fnamelist[]    */
+#define INIT_NUM_ONCE       64          /* Initial number of once_list[]    */
+
+#define MAX_DEF   256
+#define MAX_UNDEF (MAX_DEF/4)
+
+/* Values of mkdep. */
+#define MD_MKDEP        1   /* Output source file dependency line   */
+#define MD_SYSHEADER    2   /* Print also system-header names       */
+#define MD_FILE         4   /* Output to the file named *.d         */
+#define MD_PHONY        8   /* Print also phony targets for each header */
+#define MD_QUOTE        16  /* 'Quote' $ and space in target name   */
+
+#define MAX_ARCH_LEN    16
+
+#if COMPILER == GNUC
+    #define N_QUOTE_DIR     8
+#endif
+
+#if COMPILER == GNUC || COMPILER == MSC
+    /*
+    * preinclude points to the file specified by -include (-Fl for MSC) option,
+    * which is included prior to the main input file.
+    */
+    #define         NPREINCLUDE 8
+#endif
+
+#if   SYSTEM == SYS_MAC
+    #define         MAX_FRAMEWORK   8
+#endif
+
+#define NO_DIR  FALSE
+
+typedef struct system_data_ {
+
+    /* for mcpp_getopt()    */
+    int      mcpp_optind;
+    int      mcpp_opterr;
+    int      mcpp_optopt;
+    char *   mcpp_optarg;
+
+    int      mb_changed;     /* Flag of -e option        */
+    char     cur_work_dir[ PATHMAX + 1];     /* Current working directory*/
+
+    /*
+    * incdir[] stores the -I directories (and the system-specific #include <...>
+    * directories).  This is set by set_a_dir().  A trailing PATH_DELIM is
+    * appended if absent.
+    */
+    const char **    incdir;         /* Include directories      */
+    const char **    incend;         /* -> active end of incdir  */
+    int          max_inc;            /* Number of incdir[]       */
+
+    /*
+    * fnamelist[] stores the souce file names opened by #include directive for
+    * debugging information.
+    */
+    INC_LIST *   fnamelist;          /* Source file names        */
+    INC_LIST *   fname_end;          /* -> active end of fnamelist   */
+    int          max_fnamelist;      /* Number of fnamelist[]    */
+
+    /* once_list[] stores the #pragma once file names.  */
+    INC_LIST *   once_list;          /* Once opened file         */
+    INC_LIST *   once_end;           /* -> active end of once_list   */
+    int          max_once;           /* Number of once_list[]    */
+
+    /*
+    * 'search_rule' holds searching rule of #include "header.h" to search first
+    * before searching user specified or system-specific include directories.
+    * 'search_rule' is initialized to SEARCH_INIT.  It can be changed by -I1, -I2
+    * or -I3 option.  -I1 specifies CURRENT, -I2 SOURCE and -I3 both.
+    */
+
+    int      search_rule;  /* Rule to search include file  */
+
+    int      nflag;          /* Flag of -N (-undef) option       */
+    long     std_val;  /* Value of __STDC_VERSION__ or __cplusplus */
+
+    char *   def_list[ MAX_DEF];     /* Macros to be defined     */
+    char *   undef_list[ MAX_UNDEF]; /* Macros to be undefined   */
+    int      def_cnt;                /* Count of def_list        */
+    int      undef_cnt;              /* Count of undef_list      */
+
+    FILE *   mkdep_fp;                       /* For -Mx option   */
+    char *   mkdep_target;
+    /* For -MT TARGET option and for GCC's queer environment variables.     */
+    char *   mkdep_mf;               /* Argument of -MF option   */
+    char *   mkdep_md;               /* Argument of -MD option   */
+    char *   mkdep_mq;               /* Argument of -MQ option   */
+    char *   mkdep_mt;               /* Argument of -MT option   */
+
+    /* sharp_filename is filename for #line line, used only in cur_file()   */
+    char *   sharp_filename;
+    char *   argv0;      /* argv[ 0] for usage() and version()   */
+    int      ansi;           /* __STRICT_ANSI__ flag for GNUC    */ 
+    int      compat_mode;
+
+    /* "Compatible" mode of recursive macro expansion   */
+    char     arch[ MAX_ARCH_LEN];    /* -arch or -m64, -m32 options      */
+
+    #if COMPILER == GNUC
+    /* quote_dir[]:     Include directories for "header" specified by -iquote   */
+    /* quote_dir_end:   Active end of quote_dir */
+    const char *     quote_dir[ N_QUOTE_DIR];
+    const char **    quote_dir_end = quote_dir;
+    /* sys_dirp indicates the first directory to search for system headers.     */
+    const char **    sys_dirp;        /* System header directory  */
+    const char *     sysroot; /* Logical root directory of header */
+    int      i_split;                /* For -I- option   */
+    int      gcc_work_dir;           /* For -fworking-directory  */
+    int      gcc_maj_ver;                    /* __GNUC__         */
+    int      gcc_min_ver;                    /* __GNUC_MINOR__   */
+    int      dDflag;         /* Flag of -dD option       */
+    int      dMflag;         /* Flag of -dM option       */
+    #endif
+
+    #if COMPILER == GNUC || COMPILER == MSC
+    /*
+    * preinclude points to the file specified by -include (-Fl for MSC) option,
+    * which is included prior to the main input file.
+    */
+    char *   preinclude[ NPREINCLUDE];       /* File to pre-include      */
+    char **  preinc_end = preinclude;    /* -> active end of preinclude  */
+    #endif
+
+    #if COMPILER == MSC
+    int      wchar_t_modified;   /* -Zc:wchar_t flag     */
+    #endif
+
+    #if COMPILER == LCC
+    const char *     optim_name;
+    #endif
+
+    #if SYSTEM == SYS_CYGWIN
+    int      no_cygwin;          /* -mno-cygwin          */
+
+    #elif   SYSTEM == SYS_MAC
+    char *   framework[ MAX_FRAMEWORK];  /* Framework directories*/
+    int      num_framework;          /* Current number of framework[]    */
+    int      sys_framework;          /* System framework dir     */
+    const char **    to_search_framework;
+                            /* Search framework[] next to the directory */
+    int      in_import;          /* #import rather than #include */
+    #endif
+
+    #if NO_DIR
+    /* Unofficial feature to strip directory part of include file   */
+    int      no_dir;
+    #endif
+
+    int  diagnosed;
+} system_data_t;
+
+typedef struct processing_data_ {
+    option_flags_t option_flags;
+    std_limits_t std_limits;
+
+    int      mcpp_mode;                         /* Mode of preprocessing        */
+    int      stdc_val;                          /* Value of __STDC__            */
+    long     stdc_ver;                          /* Value of __STDC_VERSION__    */
+    long     cplus_val;                         /* Value of __cplusplus for C++ */
+    int      stdc2;                             /* cplus_val or (stdc_ver >= 199901L)   */
+    int      stdc3;                             /* (stdc_ver or cplus_val) >= 199901L   */
+    int      standard;                          /* mcpp_mode is STD or POST_STD */
+    int      std_line_prefix;                   /* #line in C source style      */
+    int      warn_level;                        /* Level of warning             */
+    int      errors;                            /* Error counter                */
+    long     src_line;                          /* Current source line number   */
+    int      wrong_line;                        /* Force #line to compiler      */
+    int      newlines;                          /* Count of blank lines         */
+    int      keep_comments;                     /* Don't remove comments        */
+    int      keep_spaces;                       /* Don't remove white spaces    */
+    int      include_nest;                      /* Nesting level of #include    */
+    const char *     null;                      /* "" string for convenience    */
+    const char **    inc_dirp;                  /* Directory of #includer       */
+    const char *     cur_fname;                 /* Current source file name     */
+    int      no_output;                         /* Don't output included file   */
+    int      in_directive;                      /* In process of #directive     */
+    int      in_define;                         /* In #define line              */
+    int      in_getarg;                         /* Collecting arguments of macro*/
+    int      in_include;                        /* In #include line             */
+    int      in_if;                             /* In #if and non-skipped expr. */
+    long     macro_line;                        /* Line number of macro call    */
+    char *   macro_name;                        /* Currently expanding macro    */
+    int      openum;                            /* Number of operator or punct. */
+    IFINFO *     ifptr;                         /* -> current ifstack item      */
+    FILEINFO *   infile;                        /* Current input file or macro  */
+    MFILE*   mf_in;
+    FILE *   fp_out;                            /* Output stream preprocessed   */
+    FILE *   fp_err;                            /* Diagnostics stream           */
+    FILE *   fp_debug;                          /* Debugging information stream */
+    int      insert_sep;                        /* Inserted token separator flag*/
+    int      mkdep;                             /* Output source file dependency*/
+    int      mbchar;                            /* Encoding of multi-byte char  */
+    int      mbchk;                             /* Possible multi-byte char     */
+    int      bsl_in_mbchar;                     /* 2nd byte of mbchar has '\\'  */
+    int      bsl_need_escape;                   /* '\\' in mbchar should be escaped */
+    int      mcpp_debug;                        /* Class of debug information   */
+    long     in_asm;                            /* In #asm - #endasm block      */
+    jmp_buf  error_exit;                        /* Exit on fatal error          */
+    char *   cur_fullname;                      /* Full name of current source  */
+    short *  char_type;                         /* Character classifier         */
+    char *   workp;                             /* Free space in work[]         */
+    const char *     work_end;                  /* End of work[] buffer         */
+    char     identifier[IDMAX + IDMAX / 8];     /* Lastly scanned name          */
+    IFINFO   ifstack[BLK_NEST + 1];             /* Information of #if nesting   */
+    char     work_buf[NWORK + IDMAX];           /* Temporary buffer for directive line and macro expansion  */
+    int      src_col;
+
+    /*
+    * output[] and out_ptr are used for:
+    *      buffer to store preprocessed line (this line is put out or handed to
+    *      post_preproc() via putout() in some cases)
+    */
+    char output[NMACWORK]; /* Buffer for preprocessed line */
+    const char * out_end;
+
+    /* Limit of output line for other than GCC and VC   */
+    const char * out_wend;
+
+    /* Buffer end of output line    */
+    char *out_ptr; /* Current pointer into output[]*/
+
+    /* Symbol table queue headers.  */
+    DEFBUF *symtab[SBSIZE];
+    long num_of_macro;
+
+    VAL_SIGN ev;    /* Current value and signedness     */
+    int skip;       /* 3-way signal of skipping expr*/
+
+    int mbstart;
+    int mb2;
+
+    short* char_type;  /* Pointer to one of the following type_*[].    */
+
+
+    /* Function pointer to expand_macro() functions.    */
+    char *(*expand_macro)(DEFBUF *defp, char *out, char *out_end, LINE_COL line_col, int *pragma_op);
+    /* Function pointer to mb_read_*() functions.   */
+    size_t (*mb_read)(int c1, char **in_pp, char **out_pp, processing_data_t* processingData);
+
+    /* Support for alternate output mechanisms (e.g. memory buffers) */
+    int (* mcpp_fputc)( int c, OUTDEST od, processing_data_t* processingData);
+    int (* mcpp_fputs)( const char * s, OUTDEST od, processing_data_t* processingData);
+    int (* mcpp_fprintf)( OUTDEST od, processing_data_t* processingData, const char * format, ...);
+
+    params_data_t parametersProcessingData;
+    macros_data_t macrosProcessingData;
+    support_data_t supportProcessingData;
+    system_data_t systemData;
+
+} processing_data_t;
 
 /* main.c   */
-extern void     un_predefine( int clearall);
-                /* Undefine predefined macros   */
+
+/* Undefine predefined macros */
+extern void un_predefine( int clearall, processing_data_t* data);
+
+/* Sets up the processing data */
+extern void setup_processing_data(processing_data_t* data);
 
 /* directive.c  */
-extern void     directive( void);
+extern void     directive(processing_data_t* data);
                 /* Process #directive line      */
-extern DEFBUF * do_define( int ignore_redef, int predefine);
+extern DEFBUF * do_define( int ignore_redef, int predefine, processing_data_t* data);
                 /* Do #define directive         */
-extern DEFBUF * look_id( const char * name);
+extern DEFBUF * look_id( const char * name, processing_data_t* data);
                 /* Look for a #define'd thing   */
-extern DEFBUF **    look_prev( const char * name, int * cmp);
+extern DEFBUF **    look_prev( const char * name, int * cmp, processing_data_t* data);
                 /* Look for place to insert def.*/
 extern DEFBUF * look_and_install( const char * name, int numargs
-        , const char * parmnames, const char * repl);
+        , const char * parmnames, const char * repl, processing_data_t* data);
                 /* Look and insert macro def.   */
 extern DEFBUF * install_macro( const char * name, int numargs
         , const char * parmnames, const char * repl, DEFBUF ** prevp, int cmp
-        , int predefine);
+        , int predefine, processing_data_t* data);
                 /* Install a def to symbol table*/
-extern int      undefine( const char * name);
+extern int      undefine( const char * name, processing_data_t* data);
                 /* Delete from symbol table     */
 extern void     dump_a_def( const char * why, const DEFBUF * dp, int newdef
-        , int comment, FILE * fp);
+        , int comment, FILE * fp, processing_data_t* data);
                 /* Dump a specific macro def    */
-extern void     dump_def( int comment, int K_opt);
+extern void     dump_def( int comment, int K_opt, processing_data_t* data);
                 /* Dump current macro defs      */
 
 /* eval.c   */
-extern expr_t   eval_if( void);
+extern expr_t   eval_if(processing_data_t* data);
                 /* Evaluate #if expression      */
-extern VAL_SIGN *   eval_num( const char * nump);
+extern VAL_SIGN *   eval_num( const char * nump, processing_data_t* data);
                 /* Evaluate preprocessing number*/
 
 /* expand.c */
-extern char *   (* expand_macro)( DEFBUF * defp, char * out, char * out_end
-        , LINE_COL line_col, int * pragma_op);
                 /* Expand a macro completely    */
-extern void     expand_init( int compat, int strict_ansi);
+extern void     expand_init( int compat, int strict_ansi, processing_data_t* data);
                 /* Initialize expand_macro()    */
-extern DEFBUF * is_macro( char ** cp);
+extern DEFBUF * is_macro( char ** cp, processing_data_t* data);
                 /* The sequence is a macro call?*/
 
 /* mbchar.c     */
-extern size_t   (* mb_read)( int c1, char ** in_pp, char ** out_pp);
-                /* Read mbchar sequence         */
-extern const char *     set_encoding( char * name, char * env, int pragma);
+extern const char *     set_encoding( char * name, char * env, int pragma, processing_data_t* data);
                 /* Multi-byte char encoding     */
-extern void     mb_init( void);
+extern void     mb_init(processing_data_t* data);
                 /* Initialize mbchar variables  */
-extern uexpr_t  mb_eval( char ** seq_pp);
+extern uexpr_t  mb_eval( char ** seq_pp, processing_data_t* data);
                 /* Evaluate mbchar in #if       */
-extern int      last_is_mbchar( const char * in, int len);
+extern int      last_is_mbchar( const char * in, int len, processing_data_t* data);
                 /* The line ends with MBCHAR ?  */
 
 /* support.c    */
-extern int      get_unexpandable( int c, int diag);
+extern void     mcpp_init_def_out_func(processing_data_t* data);
+extern int      get_unexpandable( int c, int diag, processing_data_t* data);
                 /* Get next unexpandable token  */
-extern void     skip_nl( void);
+extern void     skip_nl(processing_data_t* data);
                 /* Skip to the end of the line  */
-extern int      skip_ws( void);
+extern int      skip_ws(processing_data_t* data);
                 /* Skip over white-spaces       */
-extern int      scan_token( int c, char ** out_pp, char * out_end);
+extern int      scan_token( int c, char ** out_pp, char * out_end, processing_data_t* data);
                 /* Get the next token           */
-extern char *   scan_quote( int delim, char * out, char * out_end, int diag);
+extern char *   scan_quote( int delim, char * out, char * out_end, int diag, processing_data_t* data);
                 /* Scan a quoted literal        */
 extern int      id_operator( const char * name);
                 /* Check identifier-like ops    */
-extern void     expanding( const char * name, int to_be_freed);
+extern void     expanding( const char * name, int to_be_freed, processing_data_t* data);
                 /* Save macro name expanding    */
-extern void     clear_exp_mac( void);
+extern void     clear_exp_mac(processing_data_t* data);
                 /* Clear expanding macro infs   */
-extern int      get_ch( void);
+extern int      get_ch(processing_data_t* data);
                 /* Get the next char from input */
-extern int      cnv_trigraph( char * in);
+extern int      cnv_trigraph( char * in, processing_data_t* data);
                 /* Do trigraph replacement      */
-extern int      cnv_digraph( char * in);
+extern int      cnv_digraph( char * in, processing_data_t* data);
                 /* Convert digraphs to usual tok*/
-extern void     unget_ch( void);
+extern void     unget_ch(processing_data_t* data);
                 /* Push back the char to input  */
-extern FILEINFO *   unget_string( const char * text, const char * name);
-                /* Push back the string to input*/
-extern char *   save_string( const char * text);
-                /* Stuff string in malloc mem.  */
-extern FILEINFO *   get_file( const char * name, const char * src_dir
-        , const char * fullname, size_t bufsize, int include_opt);
+extern FILEINFO *   unget_string( const char * text, const char * name, processing_data_t* data); /* Push back the string to input*/
+extern char *   save_string( const char * text); /* Stuff string in malloc mem.  */
+extern FILEINFO *   get_file( const char * name, const char * src_dir, const char * fullname, size_t bufsize, int include_opt, processing_data_t* data);
                 /* New FILEINFO initialization  */
-extern char *   (xmalloc)( size_t size);
-                /* Get memory or die            */
-extern char *   (xrealloc)( char * ptr, size_t size);
-                /* Reallocate memory or die     */
-extern LINE_COL *   get_src_location( LINE_COL * p_line_col);
-                /* Get location on source file  */
-extern void     cfatal( const char * format, const char * arg1, long arg2
-        , const char * arg3);
-                /* Print a fatal error and exit */
-extern void     cerror( const char * format, const char * arg1, long arg2
-        , const char * arg3);
-                /* Print an error message       */
-extern void     cwarn( const char * format, const char * arg1, long arg2
-        , const char * arg3);
-                /* Print a warning message      */
-extern void     dump_string( const char * why, const char * text);
-                /* Dump text readably           */
-extern void     dump_unget( const char * why);
-                /* Dump all ungotten junk       */
-/* Support for alternate output mechanisms (e.g. memory buffers) */
-extern int      (* mcpp_fputc)( int c, OUTDEST od),
-                (* mcpp_fputs)( const char * s, OUTDEST od),
-                (* mcpp_fprintf)( OUTDEST od, const char * format, ...);
+extern char *   (xmalloc)( size_t size); /* Get memory or die            */
+extern char *   (xrealloc)( char * ptr, size_t size); /* Reallocate memory or die     */
+extern LINE_COL *   get_src_location( LINE_COL * p_line_col, processing_data_t* data); /* Get location on source file  */
+extern void     cfatal( const char * format, const char * arg1, long arg2, const char * arg3, processing_data_t* data); /* Print a fatal error and exit */
+extern void     cerror( const char * format, const char * arg1, long arg2, const char * arg3, processing_data_t* data); /* Print an error message       */
+extern void     cwarn( const char * format, const char * arg1, long arg2, const char * arg3, processing_data_t* data); /* Print a warning message      */
+extern void     dump_string( const char * why, const char * text, processing_data_t* data); /* Dump text readably           */
+extern void     dump_unget( const char * why, processing_data_t* data);/* Dump all ungotten junk       */
 
 // Anima ADD
 /* mfile support, implemented in system.c */
@@ -527,31 +831,30 @@ extern int mfexists(const char* filename);
 // Anima ADD
 
 /* system.c */
-extern void     do_options( int argc, char ** argv, char ** in_pp
-        , char ** out_pp);
+extern void     do_options( int argc, char ** argv, char ** in_pp, char ** out_pp, processing_data_t* data);
                 /* Process command line args    */
-extern void     init_sys_macro( void);
+extern void     init_sys_macro(processing_data_t* data);
                 /* Define system-specific macro */
-extern void     at_start( void);
+extern void     at_start(processing_data_t* data);
                 /* Commands prior to main input */
-extern void     put_depend( const char * filename);
+extern void     put_depend( const char * filename, processing_data_t* data);
                 /* Output source dependency line*/
-extern int      do_include( int next);
+extern int      do_include( int next, processing_data_t* data);
                 /* Process #include directive   */
 extern void     add_file( MFILE * mf, const char * src_dir							// Anima ADD
-        , const char * filename, const char * fullname, int include_opt);
+        , const char * filename, const char * fullname, int include_opt, processing_data_t* data);
                 /* Chain the included file      */
-extern void     sharp( FILEINFO * sharp_file, int marker);
+extern void     sharp( FILEINFO * sharp_file, int marker, processing_data_t* data);
                 /* Output # line number         */
-extern void     do_pragma( void);
+extern void     do_pragma(processing_data_t* data);
                 /* Process #pragma directive    */
-extern void     put_asm( void);
+extern void     put_asm(void);
                 /* Putout an asm code line      */
-extern void     do_old( void);
+extern void     do_old(processing_data_t* data);
                 /* Process older directives     */
-extern void     at_end( void);
+extern void     at_end(processing_data_t* data);
                 /* Do the final commands        */
-extern void     print_heap( void);
+extern void     print_heap(processing_data_t* data);
                 /* Print blocks of heap memory  */
 #if ! HOST_HAVE_STPCPY
 extern char *   stpcpy( char * dest, const char * src);
@@ -560,7 +863,7 @@ extern char *   stpcpy( char * dest, const char * src);
 
 #if MCPP_LIB    /* Setting to use mcpp as a subroutine  */
 /* directive.c  */
-extern void     clear_symtable( void);
+extern void     clear_symtable(processing_data_t* data);
                 /* Free all macro definitions   */
 /* system.c     */
 extern void     clear_filelist( void);
