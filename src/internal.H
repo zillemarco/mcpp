@@ -704,9 +704,6 @@ typedef struct processing_data_ {
     int mbstart;
     int mb2;
 
-    short* char_type;  /* Pointer to one of the following type_*[].    */
-
-
     /* Function pointer to expand_macro() functions.    */
     char *(*expand_macro)(DEFBUF *defp, char *out, char *out_end, LINE_COL line_col, int *pragma_op);
     /* Function pointer to mb_read_*() functions.   */
