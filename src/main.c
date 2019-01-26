@@ -503,7 +503,7 @@ fatal_error_exit:
         if (in_file != stdin_name)
             free(in_file);
     }
-    clear_filelist();
+    clear_filelist(processingData);
     clear_symtable(processingData);
 #endif
 
