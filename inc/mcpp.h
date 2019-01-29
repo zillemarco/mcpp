@@ -27,7 +27,7 @@ extern int mcpp_run(
 	const char* filename,
 	char** outfile,
 	char** outerrors,
-	file_loader in_file_loader
+	file_loader* in_file_loader
 	);
 
 #ifdef __cplusplus
