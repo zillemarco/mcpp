@@ -62,7 +62,7 @@ static char *str_parm_scan(char *string_end, processing_data_t* processingData);
 /* Scan the parameter in quote      */
 static void do_undef(processing_data_t* processingData);
 /* Process #undef directive         */
-static void dump_repl(const DEFBUF *dp, FILE *fp, int gcc2_va);
+static void dump_repl(const DEFBUF *dp, FILE *fp, int gcc2_va, processing_data_t* processingData);
 /* Dump replacement text            */
 
 /*
@@ -783,8 +783,13 @@ DEFBUF *do_define(
  */
 {
     const char *const predef = "\"%s\" shouldn't be redefined"; /* _E_  */
-    char repl_list[NMACWORK + IDMAX];                           /* Replacement text     */
-    char macroname[IDMAX + 1];                                  /* Name of the macro defining   */
+    
+    
+    // char repl_list[NMACWORK + IDMAX];                           /* Replacement text     */
+    // char macroname[IDMAX + 1];                                  /* Name of the macro defining   */
+    char* repl_list = xmalloc(NMACWORK + IDMAX);
+    char* macroname = xmalloc(IDMAX + 1);
+
     DEFBUF *defp;                                               /* -> Old definition            */
     DEFBUF **prevp;                                             /* -> Pointer to previous def in list   */
     int c;
@@ -804,11 +809,17 @@ DEFBUF *do_define(
     {
         cerror(no_ident, NULL, 0L, NULL, processingData);
         unget_ch(processingData);
+
+        free(repl_list);
+        free(macroname);
         return NULL;
     }
     else if (scan_token(c, (processingData->workp = processingData->work_buf, &processingData->workp), processingData->work_end, processingData) != NAM)
     {
         cerror(not_ident, processingData->work_buf, 0L, NULL, processingData);
+
+        free(repl_list);
+        free(macroname);
         return NULL;
     }
     else
@@ -824,6 +835,9 @@ DEFBUF *do_define(
                 {
                     cerror(
                         "\"%s\" shouldn't be defined", processingData->identifier, 0L, NULL, processingData); /* _E_  */
+        
+                    free(repl_list);
+                    free(macroname);
                     return NULL;
                 }
                 redefined = FALSE; /* Quite new definition */
@@ -831,7 +845,11 @@ DEFBUF *do_define(
             else
             { /* It's known:          */
                 if (ignore_redef)
+                {
+                    free(repl_list);
+                    free(macroname);
                     return defp;
+                }
                 dnargs = (defp->nargs == DEF_NOARGS_STANDARD || defp->nargs == DEF_NOARGS_PREDEF || defp->nargs == DEF_NOARGS_PREDEF_OLD)
                              ? DEF_NOARGS
                              : defp->nargs;
@@ -840,6 +858,9 @@ DEFBUF *do_define(
                 )
                 {
                     cerror(predef, processingData->identifier, 0L, NULL, processingData);
+        
+                    free(repl_list);
+                    free(macroname);
                     return NULL;
                 }
                 else
@@ -857,7 +878,11 @@ DEFBUF *do_define(
             else
             { /* It's known:          */
                 if (ignore_redef)
+                {
+                    free(repl_list);
+                    free(macroname);
                     return defp;
+                }
                 dnargs = (defp->nargs == DEF_NOARGS_STANDARD || defp->nargs == DEF_NOARGS_PREDEF || defp->nargs == DEF_NOARGS_PREDEF_OLD)
                              ? DEF_NOARGS
                              : defp->nargs;
@@ -873,12 +898,18 @@ DEFBUF *do_define(
     if (get_parm(processingData) == FALSE)
     { /* Get parameter list   */
         processingData->in_define = FALSE;
+        
+        free(repl_list);
+        free(macroname);
         return NULL; /* Syntax error         */
     }
     
     if (get_repl(macroname, processingData) == FALSE)
     { /* Get replacement text */
         processingData->in_define = FALSE;
+        
+        free(repl_list);
+        free(macroname);
         return NULL; /* Syntax error         */
     }
     
@@ -909,6 +940,9 @@ DEFBUF *do_define(
         }
         else
         { /* Identical redefinition   */
+        
+            free(repl_list);
+            free(macroname);
             return defp;
         }
     } /* Else new or re-definition*/
@@ -936,6 +970,10 @@ DEFBUF *do_define(
         cwarn("\"%s\" is defined as macro", macroname /* _W1_ */
               ,
               0L, NULL, processingData);
+              
+        
+    free(repl_list);
+    free(macroname);
     return defp;
 }
 

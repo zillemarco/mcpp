@@ -19,14 +19,15 @@
 #define DLL_DECL
 #endif
 
-extern DLL_DECL int     mcpp_lib_main( int argc, char ** argv);
-extern DLL_DECL void    mcpp_reset_def_out_func(struct processing_data_* processingData);
+extern DLL_DECL int     mcpp_lib_main( int argc, char ** argv, processing_data_t* processingData);
+extern DLL_DECL int     mcpp_lib_main_ext( int argc, char ** argv);
+extern DLL_DECL void    mcpp_reset_def_out_func(processing_data_t* processingData);
 extern DLL_DECL void    mcpp_set_out_func(
-                    struct processing_data_* processingData,
-                    int (* func_fputc)  ( int c, OUTDEST od, struct processing_data_* processingData),
-                    int (* func_fputs)  ( const char * s, OUTDEST od, struct processing_data_* processingData),
-                    int (* func_fprintf)( OUTDEST od, struct processing_data_* processingData, const char * format, ...)
+                    processing_data_t* processingData,
+                    int (* func_fputc)  ( int c, OUTDEST od, processing_data_t* processingData),
+                    int (* func_fputs)  ( const char * s, OUTDEST od, processing_data_t* processingData),
+                    int (* func_fprintf)( OUTDEST od, processing_data_t* processingData, const char * format, ...)
                     );
-extern DLL_DECL void    mcpp_use_mem_buffers( int tf, struct processing_data_* processingData);
-extern DLL_DECL char *  mcpp_get_mem_buffer( OUTDEST od, struct processing_data_* processingData);
+extern DLL_DECL void    mcpp_use_mem_buffers( int tf, processing_data_t* processingData);
+extern DLL_DECL char *  mcpp_get_mem_buffer( OUTDEST od, processing_data_t* processingData);
 #endif  /* _MCPP_LIB_H  */

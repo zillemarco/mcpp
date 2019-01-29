@@ -41,10 +41,6 @@
 #include "../inc/mcpp.h"
 #include "mcpp_out.h"
 
-#if MCPP_LIB
-#include "mcpp_lib.h"   /* External interface when used as library  */
-#endif
-
 #define EOS             '\0'        /* End of string                */
 #define CHAR_EOF        0           /* Returned by get_ch() on eof  */
 
@@ -206,6 +202,10 @@
 #pragma GCC visibility push( hidden)    /* Hide these names from outside    */
 #endif
 
+
+typedef struct processing_data_ processing_data_t;
+
+
 /*
  * The DEFBUF structure stores information about #defined macros.
  * Note that DEFBUF->parmnames is parameter names catenated with commas,
@@ -254,9 +254,9 @@ typedef struct fileinfo {
         char *          buffer;     /* Buffer of current input line */
 #if MCPP_LIB
         /* Save output functions during push/pop of #includes   */
-        int (* last_fputc)  ( int c, OUTDEST od);
-        int (* last_fputs)  ( const char * s, OUTDEST od);
-        int (* last_fprintf)( OUTDEST od, const char * format, ...);
+        int (* last_fputc)  ( int c, OUTDEST od, processing_data_t* processingData);
+        int (* last_fputs)  ( const char * s, OUTDEST od, processing_data_t* processingData);
+        int (* last_fprintf)( OUTDEST od, processing_data_t* processingData, const char * format, ...);
 #endif
 } FILEINFO;
 
@@ -477,6 +477,8 @@ typedef struct support_data_ {
     MEMBUF   mem_buffers[ NUM_OUTDEST];
 #endif
 
+    int  cr_converted;
+
 } support_data_t;
 
 typedef struct inc_list {       /* List of directories or files     */
@@ -636,6 +638,23 @@ typedef struct system_data_ {
     #endif
 
     int  diagnosed;
+
+    char *   putdep_output;                 /* File names           */
+    size_t * putdep_pos;                    /* Offset to filenames  */
+    int      putdep_pos_num;                /* Index of pos[]       */
+    char *   putdep_out_p;                  /* Pointer to output[]  */
+    size_t   putdep_mkdep_len;              /* Size of output[]     */
+    size_t   putdep_pos_max;                /* Size of pos[]        */
+    FILE *   putdep_fp;         /* Path to output dependency line   */
+    size_t   putdep_llen;       /* Length of current physical output line   */
+
+    int max_open;
+    
+    FILEINFO *   sh_file;
+    int  sh_line;
+
+    int getopt_sp;
+
 } system_data_t;
 
 typedef struct processing_data_ {
@@ -688,7 +707,7 @@ typedef struct processing_data_ {
     char *   cur_fullname;                      /* Full name of current source  */
     short *  char_type;                         /* Character classifier         */
     char *   workp;                             /* Free space in work[]         */
-    const char *     work_end;                  /* End of work[] buffer         */
+    char *     work_end;                        /* End of work[] buffer         */
     char     identifier[IDMAX + IDMAX / 8];     /* Lastly scanned name          */
     IFINFO   ifstack[BLK_NEST + 1];             /* Information of #if nesting   */
     char     work_buf[NWORK + IDMAX];           /* Temporary buffer for directive line and macro expansion  */
@@ -700,10 +719,10 @@ typedef struct processing_data_ {
     *      post_preproc() via putout() in some cases)
     */
     char output[NMACWORK]; /* Buffer for preprocessed line */
-    const char * out_end;
+    char * out_end;
 
     /* Limit of output line for other than GCC and VC   */
-    const char * out_wend;
+    char * out_wend;
 
     /* Buffer end of output line    */
     char *out_ptr; /* Current pointer into output[]*/
@@ -719,19 +738,21 @@ typedef struct processing_data_ {
     int mb2;
 
     /* Function pointer to expand_macro() functions.    */
-    char *(*expand_macro)(DEFBUF *defp, char *out, char *out_end, LINE_COL line_col, int *pragma_op);
+    char *(*expand_macro)(DEFBUF *defp, char *out, char *out_end, LINE_COL line_col, int *pragma_op, processing_data_t* processingData);
     /* Function pointer to mb_read_*() functions.   */
-    size_t (*mb_read)(int c1, char **in_pp, char **out_pp, struct processing_data_* processingData);
+    size_t (*mb_read)(int c1, char **in_pp, char **out_pp, processing_data_t* processingData);
 
     /* Support for alternate output mechanisms (e.g. memory buffers) */
-    int (* mcpp_fputc)( int c, OUTDEST od, struct processing_data_* processingData);
-    int (* mcpp_fputs)( const char * s, OUTDEST od, struct processing_data_* processingData);
-    int (* mcpp_fprintf)( OUTDEST od, struct processing_data_* processingData, const char * format, ...);
+    int (* mcpp_fputc)( int c, OUTDEST od, processing_data_t* processingData);
+    int (* mcpp_fputs)( const char * s, OUTDEST od, processing_data_t* processingData);
+    int (* mcpp_fprintf)( OUTDEST od, processing_data_t* processingData, const char * format, ...);
 
     params_data_t parametersProcessingData;
     macros_data_t macrosProcessingData;
     support_data_t supportProcessingData;
     system_data_t systemData;
+
+    file_loader* fileLoader;
 
 } processing_data_t;
 
@@ -831,14 +852,14 @@ extern void     dump_unget( const char * why, processing_data_t* data);/* Dump a
 
 // Anima ADD
 /* mfile support, implemented in system.c */
-extern MFILE* mfopen(const char* filename);
+extern MFILE* mfopen(const char* filename, processing_data_t* data);
 extern void mfclose(MFILE* mf);
 extern void mfseek(MFILE* mf, int pos);
 extern char* mfgets(char* str, int size, MFILE* mf);
 extern int mferror(MFILE* mf);
 extern int mftell(MFILE* mf);
-extern void mfset(file_loader in_file_loader);
-extern int mfexists(const char* filename);
+extern void mfset(file_loader* in_file_loader, processing_data_t* data);
+extern int mfexists(const char* filename, processing_data_t* data);
 // Anima ADD
 
 /* system.c */
@@ -863,7 +884,7 @@ extern void     put_asm(void);
                 /* Putout an asm code line      */
 extern void     do_old(processing_data_t* data);
                 /* Process older directives     */
-extern void     at_end(processing_data_t* data);
+extern void     at_end(void);
                 /* Do the final commands        */
 extern void     print_heap(void);
                 /* Print blocks of heap memory  */
@@ -896,4 +917,8 @@ extern void     init_system( processing_data_t* data);
 
 #if HOST_HAVE_STPCPY
 extern char *   stpcpy( char * dest, const char * src);
+#endif
+
+#if MCPP_LIB
+#include "mcpp_lib.h"   /* External interface when used as library  */
 #endif

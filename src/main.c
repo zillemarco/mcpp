@@ -44,6 +44,8 @@
 
 void setup_processing_data(processing_data_t* data)
 {
+    memset(data, 0, sizeof(processing_data_t));
+
     /*
      * The boolean flags specified by the execution options.
      * lang_asm allows the following non-standard features.
@@ -259,18 +261,14 @@ void setup_processing_data(processing_data_t* data)
     data->num_of_macro = 0;
 
     data->skip = 0;
+    
+    int i = 0;
+    for(i = 0; i < SBSIZE; i++)
+    {
+        data->symtab[i] = 0;
+    }
 
     data->macrosProcessingData.has_pragma = FALSE;
-
-    data->supportProcessingData.exp_mac_ind = 0;        /* Index into expanding_macro[] */
-    data->supportProcessingData.in_token = FALSE;       /* For token scanning functions */
-    data->supportProcessingData.in_string = FALSE;      /* For get_ch() and parse_line()*/
-    data->supportProcessingData.squeezews = FALSE;
-    data->supportProcessingData.dollar_diagnosed = FALSE;
-    
-    #if MCPP_LIB
-        data->supportProcessingData.use_mem_buffers = FALSE;
-    #endif
 
     data->mcpp_fputc = NULL;
     data->mcpp_fputs = NULL;
@@ -308,6 +306,27 @@ void setup_processing_data(processing_data_t* data)
     #endif
 
     data->systemData.diagnosed = FALSE;
+    data->systemData.putdep_output = NULL;
+    data->systemData.putdep_pos = NULL;
+    data->systemData.putdep_pos_num = 0;
+    data->systemData.putdep_out_p = NULL;
+    data->systemData.putdep_mkdep_len = 0;
+    data->systemData.putdep_pos_max = 0;
+    data->systemData.putdep_fp = NULL;
+    data->systemData.putdep_llen = 0;
+    
+    #if HOST_COMPILER == BORLANDC
+        /* Borland's fopen() does not set errno.    */
+        data->systemData.max_open = FOPEN_MAX - 5;
+    #else
+        data->systemData.max_open = 0;
+    #endif
+
+    data->systemData.sh_file = NULL;
+    data->systemData.sh_line = 0;
+    data->systemData.getopt_sp = 1;
+
+    data->fileLoader = NULL;
 }
 
 
@@ -424,7 +443,7 @@ int main(int argc, char **argv)
     if (in_file != NULL && !str_eq(in_file, "-"))
     {
         //if ((fp_in = fopen( in_file, "r")) == NULL) {		// Anima ADD
-        if ((processingData->mf_in = mfopen(in_file)) == NULL)
+        if ((processingData->mf_in = mfopen(in_file, processingData)) == NULL)
         { // Anima ADD
             processingData->mcpp_fprintf(ERR, processingData, "Can't open input file \"%s\".\n", in_file);
             processingData->errors++;
@@ -445,7 +464,7 @@ int main(int argc, char **argv)
     {
         if ((processingData->fp_out = fopen(out_file, "w")) == NULL)
         {
-            processingData->mcpp_fprintf(ERR, processingData, processingData, "Can't open output file \"%s\".\n", out_file);
+            processingData->mcpp_fprintf(ERR, processingData, "Can't open output file \"%s\".\n", out_file);
             processingData->errors++;
 #if MCPP_LIB
             goto fatal_error_exit;
@@ -493,7 +512,7 @@ int main(int argc, char **argv)
         put_depend(NULL, processingData); /* Append '\n' to dependency line   */
     }
 
-    at_end(processingData);             /* Do the final commands        */
+    at_end();             /* Do the final commands        */
 
 fatal_error_exit:
 #if MCPP_LIB
@@ -536,7 +555,7 @@ int mcpp_run(
     const char *filename,
     char **outfile,
     char **outerrors,
-    file_loader in_file_loader)
+    file_loader* in_file_loader)
 {
     int ret = 0;
     int argc = 0;
@@ -547,7 +566,7 @@ int mcpp_run(
     argv[argc++] = "mcpp";
     argv[argc++] = filename;
 
-    p = malloc(strlen(in_options) + 1);
+    p = xmalloc(strlen(in_options) + 1);
     if (p)
     {
         strcpy(p, in_options);
@@ -582,7 +601,7 @@ int mcpp_run(
     processing_data_t localProcessingData;
     setup_processing_data(&localProcessingData);
     mcpp_use_mem_buffers(1, &localProcessingData);
-    mfset(in_file_loader);
+    mfset(in_file_loader, &localProcessingData);
     ret = mcpp_lib_main(argc, argv, &localProcessingData);
     if (outfile)
     {
@@ -879,7 +898,7 @@ static void mcpp_main(processing_data_t* processingData)
             
             if (scan_token(c, (wp = processingData->out_ptr, &wp), processingData->out_wend, processingData) == NAM && (defp = is_macro(&wp, processingData)) != NULL)
             {                                                                      /* A macro  */
-                wp = processingData->expand_macro(defp, processingData->out_ptr, processingData->out_wend, line_col, &has_pragma); /* Expand it completely */
+                wp = processingData->expand_macro(defp, processingData->out_ptr, processingData->out_wend, line_col, &has_pragma, processingData); /* Expand it completely */
 
                 if (line_top)
                 { /* The first token is a macro   */

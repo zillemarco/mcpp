@@ -158,11 +158,15 @@ static char *   append_to_buffer(
             mem_buf_p->buffer = xmalloc( mem_buf_p->size);
             mem_buf_p->entry_pt = mem_buf_p->buffer;
         } else {
+
+            int oldSize = mem_buf_p->size;
+            
             mem_buf_p->size += size;
             mem_buf_p->bytes_avail += size;
             mem_buf_p->buffer = xrealloc( mem_buf_p->buffer, mem_buf_p->size);
-            mem_buf_p->entry_pt = mem_buf_p->buffer + mem_buf_p->size
-                    - mem_buf_p->bytes_avail;
+            mem_buf_p->entry_pt = mem_buf_p->buffer + mem_buf_p->size - mem_buf_p->bytes_avail;
+
+            memset(mem_buf_p->buffer + oldSize, 0, size);
         }
     }
 
@@ -283,13 +287,15 @@ int    mcpp_lib_fprintf(
         va_start( ap, format);
 #if MCPP_LIB
         if (processingData->supportProcessingData.use_mem_buffers) {
-            static char     mem_buffer[ NWORK];
+            char* mem_buffer = xmalloc(NWORK);
 
             rc = vsprintf( mem_buffer, format, ap);
 
             if (rc != 0) {
                 rc = mem_puts( mem_buffer, od, processingData);
             }
+
+            free(mem_buffer);
         } else {
 #endif
             rc = vfprintf( stream, format, ap);
@@ -365,7 +371,7 @@ int     get_unexpandable(
                     == NAM)                     /* Identifier       */
             && mf != NULL                       /* In source !      */				// Anima ADD
             && (defp = is_macro( NULL, processingData)) != NULL) {      /* Macro    */
-        processingData->expand_macro( defp, processingData->work_buf, processingData->work_end, line_col, & has_pragma);
+        processingData->expand_macro( defp, processingData->work_buf, processingData->work_end, line_col, & has_pragma, processingData);
                                                 /* Expand macro     */
         if (has_pragma)
             cerror( "_Pragma operator found in directive line"      /* _E_  */
@@ -1583,7 +1589,7 @@ int     get_ch(processing_data_t* processingData)
         if (processingData->infile->pos != 0L) {            /* Includer was closed  */
             //infile->fp = fopen( cur_fullname, "r");						// Anima ADD
             //fseek( infile->fp, infile->pos, SEEK_SET);					// Anima ADD
-			processingData->infile->mf = mfopen(processingData->cur_fullname);								// Anima ADD
+			processingData->infile->mf = mfopen(processingData->cur_fullname, processingData);								// Anima ADD
 			mfseek(processingData->infile->mf, processingData->infile->pos);								// Anima ADD
         }   /* Re-open the includer and restore the file-position   */
         len = (int) (processingData->infile->bptr - processingData->infile->buffer);
@@ -1916,7 +1922,6 @@ static char *   get_line(int in_comment, processing_data_t* processingData)
 #else
 #define cr_warn_level 2
 #endif
-    static int  cr_converted;
     int     converted = FALSE;
     int     len;                            /* Line length - alpha  */
     char *  ptr;
@@ -1956,10 +1961,10 @@ static char *   get_line(int in_comment, processing_data_t* processingData)
         if (len >= 2 && *(ptr + len - 2) == '\r') {         /* [CR+LF]      */
             *(ptr + len - 2) = '\n';
             *(ptr + --len) = EOS;
-            if (! cr_converted && (processingData->warn_level & cr_warn_level)) {
+            if (! processingData->supportProcessingData.cr_converted && (processingData->warn_level & cr_warn_level)) {
                 cwarn( "Converted [CR+LF] to [LF]"  /* _W1_ _W2_    */
                         , NULL, 0L, NULL, processingData);
-                cr_converted = TRUE;
+                processingData->supportProcessingData.cr_converted = TRUE;
             }
         }
         if (processingData->standard) {
@@ -2338,6 +2343,10 @@ char *
         // ANIMA ADD     print_heap();
        // ANIMA ADD cfatal( out_of_memory, NULL, (long) size, NULL);
     }
+    else {
+        memset(result, 0, size);
+    }
+
     return  result;
 }
 

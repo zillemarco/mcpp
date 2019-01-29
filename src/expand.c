@@ -224,7 +224,8 @@ static char *expand_std(
  * and return the advanced output pointer.
  */
 {
-    char macrobuf[NMACWORK + IDMAX]; /* Buffer for replace() */
+    // char macrobuf[NMACWORK + IDMAX]; /* Buffer for replace() */
+    char* macrobuf = xmalloc(NMACWORK + IDMAX);
     char *out_p = out;
     size_t len;
     int c, c1;
@@ -331,6 +332,7 @@ exp_end:
     }
     *pragma_op = processingData->macrosProcessingData.has_pragma;
 
+    free(macrobuf);
     return out_p;
 }
 
@@ -680,7 +682,8 @@ static char *replace(
         {
             m_inf->locs.start_col = m_inf->locs.start_line = 0L;
         }
-        m_inf->args = m_inf->loc_args = NULL; /* Default args */
+        m_inf->args = NULL;     /* Default args */
+        m_inf->loc_args = NULL; /* Default args */
         for (num = 1, recurs = 0; num < m_num; num++)
             if (processingData->macrosProcessingData.mac_inf[num].defp == defp)
                 recurs++; /* Recursively nested macro     */
@@ -2084,7 +2087,7 @@ static char *rescan(
                     {
                         /* Magic sequence is found between macro */
                         /* name and '('.  This is a nuisance.    */
-                        char *mgc_cleared;
+                        const char *mgc_cleared;
                         size_t seq_len;
                         size_t arg_elen = processingData->option_flags.v ? ARG_E_LEN_V
                                                          : ARG_E_LEN;
@@ -2281,8 +2284,10 @@ static char *expand_prestd(
  * and return the advanced pointer.
  */
 {
-    char macrobuf[NMACWORK + IDMAX];       /* Buffer for rescan_pre()      */
+    //char macrobuf[NMACWORK + IDMAX];       /* Buffer for rescan_pre()      */
+    char* macrobuf = xmalloc(NMACWORK + IDMAX);
     char *mac_end = &macrobuf[NMACWORK];   /* End of macrobuf[]    */
+
     char *out_p;                           /* Pointer into out[]   */
     char *mp = macrobuf;                   /* Pointer into macrobuf*/
     size_t len; /* Length of a token    */ // Anima ADD
@@ -2377,6 +2382,8 @@ err_end:
     processingData->macro_name = NULL;
     clear_exp_mac(processingData);
     *pragma_op = FALSE;
+
+    free(macrobuf);
     return out_p;
 }
 

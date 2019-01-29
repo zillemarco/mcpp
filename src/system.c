@@ -2328,9 +2328,9 @@ static char *   norm_path(
         /* stat() of some systems do not like trailing '/'  */
         slbuf1[ --len] = EOS;
     }
-	if (fname && mfexists(fname))		                // Anima ADD
+	if (fname && mfexists(fname, processingData))		                // Anima ADD
     {                                                   // Anima ADD
-        char* fname_copy = malloc(strlen(fname) + 1);   // Anima ADD
+        char* fname_copy = xmalloc(strlen(fname) + 1);   // Anima ADD
         if(fname_copy)                                  // Anima ADD
         {                                               // Anima ADD
             strcpy(fname_copy, fname);                  // Anima ADD
@@ -2741,108 +2741,100 @@ void    put_depend(const char *    filename, processing_data_t* processingData)
 #define MKDEP_MAX       (MKDEP_INIT * 0x10)
 #define MKDEP_MAXLEN    (MKDEP_INITLEN * 0x10)
 
-    static char *   output = NULL;          /* File names           */
-    static size_t * pos = NULL;             /* Offset to filenames  */
-    static int      pos_num;                /* Index of pos[]       */
-    static char *   out_p;                  /* Pointer to output[]  */
-    static size_t   mkdep_len;              /* Size of output[]     */
-    static size_t   pos_max;                /* Size of pos[]        */
-    static FILE *   fp;         /* Path to output dependency line   */
-    static size_t   llen;       /* Length of current physical output line   */
     size_t *        pos_p;                  /* Index into pos[]     */
     size_t          fnamlen;                /* Length of filename   */
 
-    if (fp == NULL) {   /* Main source file.  Have to initialize.   */
+    if (processingData->systemData.putdep_fp == NULL) {   /* Main source file.  Have to initialize.   */
 #if MCPP_LIB
-        if (output != NULL) {
-            free( output);
-            free( pos);
+        if (processingData->systemData.putdep_output != NULL) {
+            free( processingData->systemData.putdep_output);
+            free( processingData->systemData.putdep_pos);
         }
 #endif
-        output = xmalloc( mkdep_len = MKDEP_INITLEN);
-        pos = (size_t *) xmalloc( (pos_max = MKDEP_INIT) * sizeof (size_t));
-        out_p = md_init( filename, output, processingData);
-        fp = processingData->systemData.mkdep_fp;
-        llen = strlen( output);
-        pos_num = 0;            /* Initialize for MCPP_LIB build    */
+        processingData->systemData.putdep_output = xmalloc( processingData->systemData.putdep_mkdep_len = MKDEP_INITLEN);
+        processingData->systemData.putdep_pos = (size_t *) xmalloc( (processingData->systemData.putdep_pos_max = MKDEP_INIT) * sizeof (size_t));
+        processingData->systemData.putdep_out_p = md_init( filename, processingData->systemData.putdep_output, processingData);
+        processingData->systemData.putdep_fp = processingData->systemData.mkdep_fp;
+        processingData->systemData.putdep_llen = strlen( processingData->systemData.putdep_output);
+        processingData->systemData.putdep_pos_num = 0;            /* Initialize for MCPP_LIB build    */
     } else if (filename == NULL) {              /* End of input     */
-        out_p = stpcpy( out_p, "\n\n");
+        processingData->systemData.putdep_out_p = stpcpy( processingData->systemData.putdep_out_p, "\n\n");
         if (processingData->mkdep & MD_PHONY) {
             /* Output the phony target line for each recorded header files. */
             char *  cp;
             int     c;
 
-            if (strlen( output) * 2 + (pos_num * 2) >= MKDEP_MAXLEN) {
+            if (strlen( processingData->systemData.putdep_output) * 2 + (processingData->systemData.putdep_pos_num * 2) >= MKDEP_MAXLEN) {
                 cerror( "Too long dependency line"          /* _E_  */
                         , NULL, 0L, NULL, processingData);
-                if (fp == processingData->fp_out)
-                    processingData->mcpp_fputs( output, OUT, processingData);
+                if (processingData->systemData.putdep_fp == processingData->fp_out)
+                    processingData->mcpp_fputs( processingData->systemData.putdep_output, OUT, processingData);
                 else
-                    fputs( output, fp);
+                    fputs( processingData->systemData.putdep_output, processingData->systemData.putdep_fp);
                 return;
-            } else if (strlen( output) * 2 + (pos_num * 2) >= mkdep_len) {
+            } else if (strlen( processingData->systemData.putdep_output) * 2 + (processingData->systemData.putdep_pos_num * 2) >= processingData->systemData.putdep_mkdep_len) {
                 /* Enlarge the buffer   */
-                size_t  len = out_p - output;
-                output = xrealloc( output, mkdep_len *= 2);
-                out_p = output + len;
+                size_t  len = processingData->systemData.putdep_out_p - processingData->systemData.putdep_output;
+                processingData->systemData.putdep_output = xrealloc( processingData->systemData.putdep_output, processingData->systemData.putdep_mkdep_len *= 2);
+                processingData->systemData.putdep_out_p = processingData->systemData.putdep_output + len;
             }
-            pos_num--;
-            for (pos_p = &pos[ 0]; pos_p <= &pos[ pos_num]; pos_p++) {
-                if (pos_p == &pos[ pos_num]) {      /* End of output    */
-                    for (cp = output + *pos_p; *cp != '\n'; cp++)
+            processingData->systemData.putdep_pos_num--;
+            for (pos_p = &processingData->systemData.putdep_pos[ 0]; pos_p <= &processingData->systemData.putdep_pos[ processingData->systemData.putdep_pos_num]; pos_p++) {
+                if (pos_p == &processingData->systemData.putdep_pos[ processingData->systemData.putdep_pos_num]) {      /* End of output    */
+                    for (cp = processingData->systemData.putdep_output + *pos_p; *cp != '\n'; cp++)
                         ;
                     c = '\n';                       /* Append newline   */
                 } else {
-                    cp = output + *(pos_p + 1) - 1;
+                    cp = processingData->systemData.putdep_output + *(pos_p + 1) - 1;
                     while( *cp == ' ' || *cp == '\\' || *cp == '\n')
                         cp--;               /* Remove trailing spaces   */
                     c = *(++cp);
                 }
                 *cp = EOS;
-                out_p = stpcpy( out_p, output + *pos_p);
-                out_p = stpcpy( out_p, ":\n\n");
+                processingData->systemData.putdep_out_p = stpcpy( processingData->systemData.putdep_out_p, processingData->systemData.putdep_output + *pos_p);
+                processingData->systemData.putdep_out_p = stpcpy( processingData->systemData.putdep_out_p, ":\n\n");
                 *cp = c;
             }
         }
-        if (fp == processingData->fp_out) { /* To the same path with normal preprocessing   */
-            processingData->mcpp_fputs( output, OUT, processingData);
+        if (processingData->systemData.putdep_fp == processingData->fp_out) { /* To the same path with normal preprocessing   */
+            processingData->mcpp_fputs( processingData->systemData.putdep_output, OUT, processingData);
         } else {        /* To the file specified by -MF, -MD, -MMD options  */
-            fputs( output, fp);
-            fclose( fp);
+            fputs( processingData->systemData.putdep_output, processingData->systemData.putdep_fp);
+            fclose( processingData->systemData.putdep_fp);
         }
-        fp = NULL;      /* Clear for the next call in MCPP_LIB build        */
+        processingData->systemData.putdep_fp = NULL;      /* Clear for the next call in MCPP_LIB build        */
         return;
     }
 
     fnamlen = strlen( filename);
     /* Check the recorded filename  */
-    for (pos_p = pos; pos_p < &pos[ pos_num]; pos_p++) {
-        if (memcmp( output + *pos_p, filename, fnamlen) == 0)
+    for (pos_p = processingData->systemData.putdep_pos; pos_p < &processingData->systemData.putdep_pos[ processingData->systemData.putdep_pos_num]; pos_p++) {
+        if (memcmp( processingData->systemData.putdep_output + *pos_p, filename, fnamlen) == 0)
             return;                 /* Already recorded filename    */
     }
     /* Any new header.  Append its name to output.  */
-    if (llen + fnamlen > MAX_OUT_LEN) {         /* Line is long     */
-        out_p = stpcpy( out_p, " \\\n ");       /* Fold it          */
-        llen = 1;
+    if (processingData->systemData.putdep_llen + fnamlen > MAX_OUT_LEN) {         /* Line is long     */
+        processingData->systemData.putdep_out_p = stpcpy( processingData->systemData.putdep_out_p, " \\\n ");       /* Fold it          */
+        processingData->systemData.putdep_llen = 1;
     }
-    llen += fnamlen + 1;
-    if (pos_num >= MKDEP_MAX
-            || out_p + fnamlen + 1 >= output + MKDEP_MAXLEN)
-        cfatal( "Too long dependency line: %s", output, 0L, NULL, processingData);
+    processingData->systemData.putdep_llen += fnamlen + 1;
+    if (processingData->systemData.putdep_pos_num >= MKDEP_MAX
+            || processingData->systemData.putdep_out_p + fnamlen + 1 >= processingData->systemData.putdep_output + MKDEP_MAXLEN)
+        cfatal( "Too long dependency line: %s", processingData->systemData.putdep_output, 0L, NULL, processingData);
     /* Need to enlarge the buffer   */
-    if (pos_num >= pos_max) {
-        pos = (size_t *) xrealloc( (char *) pos
-                , (pos_max *= 2) * sizeof (size_t *));
+    if (processingData->systemData.putdep_pos_num >= processingData->systemData.putdep_pos_max) {
+        processingData->systemData.putdep_pos = (size_t *) xrealloc( (char *) processingData->systemData.putdep_pos
+                , (processingData->systemData.putdep_pos_max *= 2) * sizeof (size_t *));
     }
-    if (output + mkdep_len <= out_p + fnamlen + 1) {
-        size_t  len = out_p - output;
-        output = xrealloc( output, mkdep_len *= 2);
-        out_p = output + len;
+    if (processingData->systemData.putdep_output + processingData->systemData.putdep_mkdep_len <= processingData->systemData.putdep_out_p + fnamlen + 1) {
+        size_t  len = processingData->systemData.putdep_out_p - processingData->systemData.putdep_output;
+        processingData->systemData.putdep_output = xrealloc( processingData->systemData.putdep_output, processingData->systemData.putdep_mkdep_len *= 2);
+        processingData->systemData.putdep_out_p = processingData->systemData.putdep_output + len;
     }
-    *out_p++ = ' ';
-    pos[ pos_num++] = out_p - output;       /* Remember the offset  */
+    *processingData->systemData.putdep_out_p++ = ' ';
+    processingData->systemData.putdep_pos[ processingData->systemData.putdep_pos_num++] = processingData->systemData.putdep_out_p - processingData->systemData.putdep_output;       /* Remember the offset  */
             /* Don't use pointer, since 'output' may be reallocated later.  */
-    out_p = stpcpy( out_p, filename);
+    processingData->systemData.putdep_out_p = stpcpy( processingData->systemData.putdep_out_p, filename);
 }
 
 static char *   md_init(
@@ -3255,12 +3247,6 @@ static int  open_file(
  */
 {
     char        dir_fname[ PATHMAX] = { EOS, };
-#if HOST_COMPILER == BORLANDC
-    /* Borland's fopen() does not set errno.    */
-    static int  max_open = FOPEN_MAX - 5;
-#else
-    static int  max_open;
-#endif
     int         len;
     FILEINFO *  file = processingData->infile;
     //FILE *      fp;		// Anima ADD
@@ -3302,16 +3288,16 @@ search:
     if (processingData->standard && included( fullname, processingData))        /* Once included    */
         goto  true;
         
-    if ((max_open != 0 && max_open <= processingData->include_nest)
+    if ((processingData->systemData.max_open != 0 && processingData->systemData.max_open <= processingData->include_nest)
                             /* Exceed the known limit of open files */
 //            || ((fp = fopen( fullname, "r")) == NULL && errno == EMFILE)) {		// Anima ADD
-			|| ((mf = mfopen(fullname)) == NULL && errno == EMFILE)) {				// Anima ADD
+			|| ((mf = mfopen(fullname, processingData)) == NULL && errno == EMFILE)) {				// Anima ADD
                             /* Reached the limit for the first time */
         if (processingData->mcpp_debug & PATH) {
 #if HOST_COMPILER == BORLANDC
             if (include_nest == FOPEN_MAX - 5)
 #else
-            if (max_open == 0)
+            if (processingData->systemData.max_open == 0)
 #endif
                 processingData->mcpp_fprintf( DBG, processingData,
     "#include nest reached at the maximum of system: %d, returned errno: %d\n"
@@ -3330,13 +3316,13 @@ search:
         //if ((fp = fopen( fullname, "r")) == NULL) {		// Anima ADD
         //    file->fp = fopen( cur_fullname, "r");			// Anima ADD
         //    fseek( file->fp, file->pos, SEEK_SET);		// Anima ADD
-		if ((mf = mfopen(fullname)) == NULL) {				// Anima ADD
-			file->mf = mfopen(processingData->cur_fullname);				// Anima ADD
+		if ((mf = mfopen(fullname, processingData)) == NULL) {				// Anima ADD
+			file->mf = mfopen(processingData->cur_fullname, processingData);				// Anima ADD
 			mfseek(file->mf, file->pos);					// Anima ADD
             goto  false;
         }
-        if (max_open == 0)      /* Remember the limit of the system */
-            max_open = processingData->include_nest;
+        if (processingData->systemData.max_open == 0)      /* Remember the limit of the system */
+            processingData->systemData.max_open = processingData->include_nest;
     } else if (mf == NULL)                  /* No read permission   */ 	// Anima ADD
         goto  false;
     /* Truncate buffer of the includer to save memory   */
@@ -3744,8 +3730,6 @@ void    sharp(
  * else (i.e. 'sharp_file' is NULL) 'infile'.
  */
 {
-    static FILEINFO *   sh_file;
-    static int  sh_line;
     FILEINFO *  file;
     int         line;
 
@@ -3756,10 +3740,10 @@ void    sharp(
         file = file->parent;
     line = sharp_file ? sharp_file->line : processingData->src_line;
     if (processingData->no_output || processingData->option_flags.p || file == NULL
-            || (file == sh_file && line == sh_line))
+            || (file == processingData->systemData.sh_file && line == processingData->systemData.sh_line))
         goto  sharp_exit;
-    sh_file = file;
-    sh_line = line;
+    processingData->systemData.sh_file = file;
+    processingData->systemData.sh_line = line;
     if (processingData->keep_comments)
         processingData->mcpp_fputc( '\n', OUT, processingData);         /* Ensure to be on line top */
     if (processingData->std_line_prefix)
@@ -4670,11 +4654,10 @@ static int  mcpp_getopt(
 {
     const char * const   error1 = ": option requires an argument --";
     const char * const   error2 = ": illegal option --";
-    static int      sp = 1;
     int             c;
     const char *    cp;
 
-    if (sp == 1) {
+    if (processingData->systemData.getopt_sp == 1) {
         if (argc <= processingData->systemData.mcpp_optind ||
                 argv[ processingData->systemData.mcpp_optind][ 0] != '-'
                     || argv[ processingData->systemData.mcpp_optind][ 1] == '\0') {
@@ -4684,30 +4667,30 @@ static int  mcpp_getopt(
             return  EOF;
         }
     }
-/*  mcpp_optopt = c = (unsigned char) argv[ mcpp_optind][ sp];  */
-    processingData->systemData.mcpp_optopt = c = argv[ processingData->systemData.mcpp_optind][ sp] & UCHARMAX;
+/*  mcpp_optopt = c = (unsigned char) argv[ mcpp_optind][ processingData->systemData.getopt_sp];  */
+    processingData->systemData.mcpp_optopt = c = argv[ processingData->systemData.mcpp_optind][ processingData->systemData.getopt_sp] & UCHARMAX;
     if (c == ':' || (cp = strchr( opts, c)) == NULL) {
         OPTERR( error2, c, processingData)
-        if (argv[ processingData->systemData.mcpp_optind][ ++sp] == '\0') {
+        if (argv[ processingData->systemData.mcpp_optind][ ++processingData->systemData.getopt_sp] == '\0') {
             processingData->systemData.mcpp_optind++;
-            sp = 1;
+            processingData->systemData.getopt_sp = 1;
         }
         return  '?';
     }
     if (*++cp == ':') {
-        if (argv[ processingData->systemData.mcpp_optind][ sp+1] != '\0') {
-            processingData->systemData.mcpp_optarg = &argv[ processingData->systemData.mcpp_optind++][ sp+1];
+        if (argv[ processingData->systemData.mcpp_optind][ processingData->systemData.getopt_sp+1] != '\0') {
+            processingData->systemData.mcpp_optarg = &argv[ processingData->systemData.mcpp_optind++][ processingData->systemData.getopt_sp+1];
         } else if (argc <= ++processingData->systemData.mcpp_optind) {
             OPTERR( error1, c, processingData)
-            sp = 1;
+            processingData->systemData.getopt_sp = 1;
             return  '?';
         } else {
             processingData->systemData.mcpp_optarg = argv[ processingData->systemData.mcpp_optind++];
         }
-        sp = 1;
+        processingData->systemData.getopt_sp = 1;
     } else {
-        if (argv[ processingData->systemData.mcpp_optind][ ++sp] == '\0') {
-            sp = 1;
+        if (argv[ processingData->systemData.mcpp_optind][ ++processingData->systemData.getopt_sp] == '\0') {
+            processingData->systemData.getopt_sp = 1;
             processingData->systemData.mcpp_optind++;
         }
         processingData->systemData.mcpp_optarg = NULL;
@@ -4789,24 +4772,23 @@ void    clear_filelist(processing_data_t* processingData)
 
 // Anima ADD
 /** Callback to retrieve file contents. */
-file_loader g_file_loader = {0};
 
-void mfset(file_loader in_file_loader)
+void mfset(file_loader* in_file_loader, processing_data_t* processingData)
 {
-	g_file_loader = in_file_loader;
+	processingData->fileLoader = in_file_loader;
 }
 
-int mfexists(const char* filename)
+int mfexists(const char* filename, processing_data_t* processingData)
 {
 	int exists = 0;
-	if (g_file_loader.get_file_contents)
+	if (processingData->fileLoader->get_file_contents)
 	{
-		exists = g_file_loader.get_file_contents(g_file_loader.user_data, filename, 0, 0) == 0 ? 0 : 1;
+		exists = processingData->fileLoader->get_file_contents(processingData->fileLoader->user_data, filename, 0, 0) == 0 ? 0 : 1;
 	}
 	return exists;
 }
 
-MFILE* mfopen(const char* filename)
+MFILE* mfopen(const char* filename, processing_data_t* processingData)
 {
 	MFILE* mf = 0;
 	FILE* fp = 0;
@@ -4814,8 +4796,8 @@ MFILE* mfopen(const char* filename)
 	char* contents_end = 0;
 	size_t contents_size = 0;
 
-	if (g_file_loader.get_file_contents
-		&& g_file_loader.get_file_contents(g_file_loader.user_data, filename, &contents, &contents_size) != 0)
+	if (processingData->fileLoader->get_file_contents
+		&& processingData->fileLoader->get_file_contents(processingData->fileLoader->user_data, filename, &contents, &contents_size) != 0)
 	{
 		contents_end = contents + contents_size;
 	}
@@ -4832,7 +4814,7 @@ MFILE* mfopen(const char* filename)
 
 	if (contents || fp)
 	{
-		mf = (MFILE*)malloc(sizeof(MFILE));
+		mf = (MFILE*)xmalloc(sizeof(MFILE));
 		mf->fp = fp;
 		mf->start = contents;
 		mf->end = contents_end;
